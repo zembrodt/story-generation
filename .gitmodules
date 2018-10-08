@@ -1,0 +1,3 @@
+[submodule "pymeteor"]
+	path = pymeteor
+	url = https://github.com/zembrodt/pymeteor
