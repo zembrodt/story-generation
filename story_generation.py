@@ -6,6 +6,7 @@ import unicodedata
 import string
 import re
 import random
+import os
 
 import torch
 
@@ -84,7 +85,9 @@ def createStory(input_sentence, input_book, output_book, encoder, decoder):
 """
 
 def getSeq2SeqNetwork(encoder_filename, decoder_filename, input_book, output_book, train_pairs, test_pairs):
-	
+        # Check that the path for both files exists
+	os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
+	os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
 	
 	encoder_file = Path(encoder_filename)
 	decoder_file = Path(decoder_filename)
@@ -132,7 +135,6 @@ def main():
 	
 		network = getSeq2SeqNetwork(encoder_filename, decoder_filename, input_book, output_book, train_pairs, test_pairs)
 	
-		#bleu_score, perplexity_score = evaluateRandomly(encoder1, attn_decoder1, test_pairs, input_book, output_book, perplexity_model)
 		bleu_score, perplexity_score = network.evaluateRandomly(input_book, output_book, perplexity_model)
 		print('BLEU Score for %d epochs: %.4f' % (bleu_score, epoch_size))
 		print('Perplexity score for %d epochs: %.4f' % (perplexity_score, epoch_size))
