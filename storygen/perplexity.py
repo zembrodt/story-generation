@@ -56,7 +56,7 @@ class PerplexityModel:
 
 	# Calculates the perplexity of a given sentence
 	# The sentence should be a string where each word is separated by white space (including punctuations)
-	def perplexity(sentence, b=2):
+	def perplexity(self, sentence, b=2):
 		sentence = sentence.split()
 
 		# Calculate the sum of all probabilties
