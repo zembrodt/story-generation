@@ -6,15 +6,10 @@ import unicodedata
 import string
 import re
 import random
-import os
+import collections
 
 import torch
-
-import pickle
-from pathlib import Path
-
 import nltk
-import collections
 
 import storygen.seq2seq as seq2seq
 import storygen.book as book
@@ -84,37 +79,6 @@ def createStory(input_sentence, input_book, output_book, encoder, decoder):
     return story
 """
 
-def getSeq2SeqNetwork(encoder_filename, decoder_filename, input_book, output_book, train_pairs, test_pairs):
-        # Check that the path for both files exists
-	os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
-	os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
-	
-	encoder_file = Path(encoder_filename)
-	decoder_file = Path(decoder_filename)
-	network = None
-
-	if encoder_file.is_file() and decoder_file.is_file():
-		print("Loading encoder and decoder from files...")
-		encoder = pickle.load(open(encoder_filename, "rb"))
-		decoder = pickle.load(open(decoder_filename, "rb"))
-		network = seq2seq.Seq2Seq(encoder, decoder, train_pairs, test_pairs, MAX_LENGTH)
-	else:
-		print("Training encoder and decoder...")
-		encoder = seq2seq.EncoderRNN(input_book.n_words, HIDDEN_SIZE).to(DEVICE)
-		decoder = seq2seq.DecoderRNN(HIDDEN_SIZE, output_book.n_words, MAX_LENGTH).to(DEVICE)
-		network = seq2seq.Seq2Seq(encoder, decoder, train_pairs, test_pairs, MAX_LENGTH)
-		
-		ITER_AMOUNT = 10000
-		network.trainIters(ITER_AMOUNT, input_book, output_book)
-	
-		## Dump to pickle ##
-		print("Dumping encoder and decoder to files...")
-		pickle.dump(encoder, open(encoder_filename, "wb"))
-		pickle.dump(decoder, open(decoder_filename, "wb"))
-	return network
-
-
-
 def main():
 
 	book_title = '1_sorcerers_stone'
@@ -124,17 +88,22 @@ def main():
 	perplexity_model = pyplexity.PerplexityModel(sentences)
 	
 	train_pairs, test_pairs = getPairs(sentences)
-	print('TEST')
+        
 	input_book, output_book = getBooks(book_title, train_pairs, test_pairs)
-	print('TEST2')
+	
 	epoch_sizes = [0]#[100, 200, 400, 600]
 	for epoch_size in epoch_sizes:
 		print('Epoch size: %d' % epoch_size)
 		encoder_filename = ENCODER_FILE_FORMAT % epoch_size
 		decoder_filename = DECODER_FILE_FORMAT % epoch_size
-	
-		network = getSeq2SeqNetwork(encoder_filename, decoder_filename, input_book, output_book, train_pairs, test_pairs)
-	
+
+		ITER_AMOUNT = 10000
+
+		network = seq2seq.Seq2Seq(train_pairs, test_pairs, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
+		if not network.loadFromFiles(encoder_filename, decoder_filename):
+			network.trainIters(ITER_AMOUNT, input_book, output_book)
+			network.saveToFiles(encoder_filename, decoder_filename)
+		
 		bleu_score, perplexity_score = network.evaluateRandomly(input_book, output_book, perplexity_model)
 		print('BLEU Score for %d epochs: %.4f' % (bleu_score, epoch_size))
 		print('Perplexity score for %d epochs: %.4f' % (perplexity_score, epoch_size))

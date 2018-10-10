@@ -3,6 +3,9 @@ import time
 import random
 import time
 import math
+import os
+import pickle
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -13,23 +16,20 @@ from nltk.translate.bleu_score import sentence_bleu
 
 import storygen.book as bk
 
-# Consts
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 ## HELPER FUNCTIONS ##
 def indexesFromSentence(book, sentence):
     return [book.word2index[word] for word in sentence.split(' ')]
 
 
-def tensorFromSentence(book, sentence):
+def tensorFromSentence(book, sentence, device):
     indexes = indexesFromSentence(book, sentence)
     indexes.append(bk.STOP_ID)
-    return torch.tensor(indexes, dtype=torch.long, device=DEVICE).view(-1, 1)
+    return torch.tensor(indexes, dtype=torch.long, device=device).view(-1, 1)
 
 
-def tensorsFromPair(pair, input_book, output_book):
-    input_tensor = tensorFromSentence(input_book, pair[0])
-    target_tensor = tensorFromSentence(output_book, pair[1])
+def tensorsFromPair(pair, input_book, output_book, device):
+    input_tensor = tensorFromSentence(input_book, pair[0], device)
+    target_tensor = tensorFromSentence(output_book, pair[1], device)
     return (input_tensor, target_tensor)
 
 	# Calculates the BLEU score
@@ -87,8 +87,8 @@ class EncoderRNN(nn.Module):
         output, hidden = self.gru(output, hidden)
         return output, hidden
 
-    def initHidden(self):
-        return torch.zeros(1, 1, self.hidden_size, device=DEVICE)
+    def initHidden(self, device):
+        return torch.zeros(1, 1, self.hidden_size, device=device)
 
 ######################################################################
 # Attention Decoder
@@ -145,22 +145,48 @@ class DecoderRNN(nn.Module):
         output = F.log_softmax(self.out(output[0]), dim=1)
         return output, hidden, attn_weights
 
-    def initHidden(self):
-        return torch.zeros(1, 1, self.hidden_size, device=DEVICE)
+    def initHidden(self, device):
+        return torch.zeros(1, 1, self.hidden_size, device=device)
 		
 class Seq2Seq:
-	def __init__(self, encoder, decoder, train_pairs, test_pairs, max_length):
-		self.encoder = encoder
-		self.decoder = decoder
+	def __init__(self, train_pairs, test_pairs, max_length, hidden_size, device):
+		self.encoder = None
+		self.decoder = None
 		self.train_pairs = train_pairs
 		self.test_pairs = test_pairs
 		self.max_length = max_length
+		self.hidden_size = hidden_size
+		self.device = device
 		self.encoder_optimizer = None
 		self.decoder_optimizer = None
 		self.criterion = None
+
+	def loadFromFiles(self, encoder_filename, decoder_filename):
+		# Check that the path for both files exists
+		os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
+		os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
 		
+		encoder_file = Path(encoder_filename)
+		decoder_file = Path(decoder_filename)
+
+		if encoder_file.is_file() and decoder_file.is_file():
+			print("Loading encoder and decoder from files...")
+			self.encoder = pickle.load(open(encoder_filename, "rb"))
+			self.decoder = pickle.load(open(decoder_filename, "rb"))
+			return True
+		else:
+			return False
+
+	def saveToFiles(self, encoder_filename, decoder_filename):
+		# Check that the path for both files exists
+		os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
+		os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
+		
+		pickle.dump(self.encoder, open(encoder_filename, "wb"))
+		pickle.dump(self.decoder, open(decoder_filename, "wb"))
+	
 	def train(self, input_tensor, target_tensor, teacher_forcing_ratio=0.5):
-		encoder_hidden = self.encoder.initHidden()
+		encoder_hidden = self.encoder.initHidden(self.device)
 
 		self.encoder_optimizer.zero_grad()
 		self.decoder_optimizer.zero_grad()
@@ -168,7 +194,7 @@ class Seq2Seq:
 		input_length = input_tensor.size(0)
 		target_length = target_tensor.size(0)
 
-		encoder_outputs = torch.zeros(self.max_length, self.encoder.hidden_size, device=DEVICE)
+		encoder_outputs = torch.zeros(self.max_length, self.encoder.hidden_size, device=self.device)
 
 		loss = 0
 
@@ -177,7 +203,7 @@ class Seq2Seq:
 				input_tensor[ei], encoder_hidden)
 			encoder_outputs[ei] = encoder_output[0, 0]
 
-		decoder_input = torch.tensor([[bk.START_ID]], device=DEVICE)
+		decoder_input = torch.tensor([[bk.START_ID]], device=self.device)
 
 		decoder_hidden = encoder_hidden
 
@@ -221,6 +247,10 @@ class Seq2Seq:
 	# Then we call ``train`` many times and occasionally print the progress (%
 	# of examples, time so far, estimated time) and average loss.
 	def trainIters(self, n_iters, input_book, output_book, print_every=1000, learning_rate=0.01):
+		if self.encoder is None or self.decoder is None:
+			self.encoder = EncoderRNN(input_book.n_words, self.hidden_size).to(self.device)
+			self.decoder = DecoderRNN(hidden_size, output_book.n_words, self.max_length).to(self.device)
+
 		#n_iters == iterations
 		#epochs = iterations / num of examples
 		start = time.time()
@@ -300,18 +330,18 @@ class Seq2Seq:
 
 	def evaluate(self, sentence, input_book, output_book):
 		with torch.no_grad():
-			input_tensor = tensorFromSentence(input_book, sentence)
+			input_tensor = tensorFromSentence(input_book, sentence, self.device)
 			input_length = input_tensor.size()[0]
-			encoder_hidden = self.encoder.initHidden()
+			encoder_hidden = self.encoder.initHidden(self.device)
 
-			encoder_outputs = torch.zeros(self.max_length, self.encoder.hidden_size, device=DEVICE)
+			encoder_outputs = torch.zeros(self.max_length, self.encoder.hidden_size, device=self.device)
 
 			for ei in range(input_length):
 				encoder_output, encoder_hidden = self.encoder(input_tensor[ei],
 														 encoder_hidden)
 				encoder_outputs[ei] += encoder_output[0, 0]
 
-			decoder_input = torch.tensor([[bk.START_ID]], device=DEVICE)  # SOL
+			decoder_input = torch.tensor([[bk.START_ID]], device=self.device)  # SOL
 
 			decoder_hidden = encoder_hidden
 
