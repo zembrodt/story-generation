@@ -1,3 +1,6 @@
 [submodule "pymeteor"]
 	path = pymeteor
 	url = https://github.com/zembrodt/pymeteor
+[submodule "pyplexity"]
+	path = pyplexity
+	url = https://github.com/zembrodt/pyplexity

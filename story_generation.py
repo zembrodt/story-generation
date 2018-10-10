@@ -17,7 +17,8 @@ import collections
 
 import storygen.seq2seq as seq2seq
 import storygen.book as book
-import storygen.perplexity as perplexity
+import pyplexity.pyplexity as pyplexity
+import pymeteor.pymeteor as pymeteor
 
 # Consts
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -117,7 +118,7 @@ def main():
 
 	sentences = getSentencesFromBook(book_title)
 	
-	perplexity_model = perplexity.PerplexityModel(sentences)
+	perplexity_model = pyplexity.PerplexityModel(sentences)
 	
 	train_pairs, test_pairs = getPairs(sentences)
 	print('TEST')
