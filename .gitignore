@@ -4,3 +4,5 @@ obj/
 # Output logs
 logs/
 
+# Submodule cache
+storygen/__pycache__/
