@@ -14,18 +14,20 @@ def main():
 
     # Actual book sentences
     actual_sentences_score = 0.0
-    for sentence in sentences:
-        actual_sentences_score += perplexity_model.perplexity(sentence)
-    actual_sentences_score /= len(sentences)
-    print('Actual sentences score: %.4f'%actual_sentences_score)
-
     # Random words
     words = list(perplexity_model.model.keys())
     words.remove(pyplexity.STOP)
     random_words_score = 0.0
+    
     for sentence in sentences:
+        actual_sentences_score += perplexity_model.perplexity(sentence)
+        
         random_sentence = ' '.join([random.choice(words) for i in range(len(sentence.split()))])
         random_words_score += perplexity_model.perplexity(random_sentence)
+        
+    actual_sentences_score /= len(sentences)
+    print('Actual sentences score: %.4f'%actual_sentences_score)
+
     random_words_score /= len(sentences)
     print('Random words score: %.4f'%random_words_score)
 
