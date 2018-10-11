@@ -4,7 +4,6 @@ import random
 import time
 import math
 import os
-import pickle
 from pathlib import Path
 
 import torch
@@ -161,7 +160,10 @@ class Seq2Seq:
 		self.decoder_optimizer = None
 		self.criterion = None
 
-	def loadFromFiles(self, encoder_filename, decoder_filename):
+		#for testing
+		self.i = 0
+
+	def loadFromFiles(self, encoder_filename, decoder_filename, input_book, output_book):
 		# Check that the path for both files exists
 		os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
 		os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
@@ -171,19 +173,25 @@ class Seq2Seq:
 
 		if encoder_file.is_file() and decoder_file.is_file():
 			print("Loading encoder and decoder from files...")
-			self.encoder = pickle.load(open(encoder_filename, "rb"))
-			self.decoder = pickle.load(open(decoder_filename, "rb"))
+                        self.encoder = EncoderRNN(input_book.n_words, self.hidden_size).to(self.device)
+                        self.encoder.load_state_dict(torch.load(encoder_file))
+                        
+                        self.decoder = DecoderRNN(self.hidden_size, output_book.n_words, self.max_length).to(self.device)
+                        self.decoder.load_state_dict(torch.load(decoder_file))
+
 			return True
-		else:
-			return False
+		return False
 
 	def saveToFiles(self, encoder_filename, decoder_filename):
 		# Check that the path for both files exists
 		os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
 		os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
-		
-		pickle.dump(self.encoder, open(encoder_filename, "wb"))
-		pickle.dump(self.decoder, open(decoder_filename, "wb"))
+
+                encoder_file = Path(encoder_filename)
+		decoder_file = Path(decoder_filename)
+
+		torch.save(self.encoder.state_dict(), encoder_file)
+		torch.save(self.decoder.state_dict(), decoder_file)
 	
 	def train(self, input_tensor, target_tensor, teacher_forcing_ratio=0.5):
 		encoder_hidden = self.encoder.initHidden(self.device)
@@ -352,6 +360,18 @@ class Seq2Seq:
 				decoder_output, decoder_hidden, decoder_attention = self.decoder(
 					decoder_input, decoder_hidden, encoder_outputs)
 				decoder_attentions[di] = decoder_attention.data
+				# output.data contains all log probabilities and distribution(?)
+				# force the program to generate a sentence and record the probability of doing so
+				if self.i == 0:
+				    print('decoder_output.data:\n%s'%str(decoder_output.data))
+				    topv,topi=decoder_output.data.topk(1)
+				    print('\ndecoder_output.data.topk(1):\n%s'%str(decoder_output.data.topk(1)))
+				    print('\ttopv = %s\n\ttopi = %s\n\ttopi.item = %s\n\tword = %s'%(str(topv), str(topi), str(topi.item()), output_book.index2word[topi.item()]))
+				    topv,topi=decoder_output.data.topk(2)
+				    topi = topi[0][1]
+				    print('\ndecoder_output.data.topk(2):\n%s'%str(decoder_output.data.topk(2)))
+				    print('\ttopv = %s\n\ttopi = %s\n\ttopi.item = %s\n\tword = %s'%(str(topv), str(topi), str(topi.item()), output_book.index2word[topi.item()]))
+				    self.i += 1
 				topv, topi = decoder_output.data.topk(1)
 				if topi.item() == bk.STOP_ID:
 					# DON'T NEED? Will add this token to the end of some sentences

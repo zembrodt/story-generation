@@ -20,8 +20,8 @@ import pymeteor.pymeteor as pymeteor
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAX_LENGTH = 1024
 HIDDEN_SIZE = 256
-ENCODER_FILE_FORMAT = "obj/encoder_%d.p"
-DECODER_FILE_FORMAT = "obj/decoder_%d.p"
+ENCODER_FILE_FORMAT = "obj/encoder_%d.torch"
+DECODER_FILE_FORMAT = "obj/decoder_%d.torch"
 
 # Read all the lines from a book and convert them to an array of sentences
 def getSentencesFromBook(book_title):
@@ -91,7 +91,7 @@ def main():
         
 	input_book, output_book = getBooks(book_title, train_pairs, test_pairs)
 	
-	epoch_sizes = [0]#[100, 200, 400, 600]
+	epoch_sizes = [1]#[100, 200, 400, 600]
 	for epoch_size in epoch_sizes:
 		print('Epoch size: %d' % epoch_size)
 		encoder_filename = ENCODER_FILE_FORMAT % epoch_size
@@ -100,7 +100,7 @@ def main():
 		ITER_AMOUNT = 10000
 
 		network = seq2seq.Seq2Seq(train_pairs, test_pairs, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
-		if not network.loadFromFiles(encoder_filename, decoder_filename):
+		if not network.loadFromFiles(encoder_filename, decoder_filename, input_book, output_book):
 			network.trainIters(ITER_AMOUNT, input_book, output_book)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
