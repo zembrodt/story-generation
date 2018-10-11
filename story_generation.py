@@ -115,5 +115,6 @@ def main():
 			print('> %s' % line)
 		"""
 
-main()
+if __name__ == '__main__':
+        main()
 
