@@ -375,15 +375,21 @@ class Seq2Seq:
 		print('Printing first 10 evaluations:')
 		bleu_total = 0.0
 		perplexity_total = 0.0
+		empty_sentences = 0
 		for test_pair in self.test_pairs:
 			output_words, attentions = self.evaluate(test_pair[0], input_book, output_book)
+                        if len(output_words) == 0:
+                            print('We outputted an empty sentence! Skipping...')
+                            print('Test pair:\n\t>%s\n\t=%s'%(test_pair[0], test_pair[1]))
+                            empty_sentences += 1
+                            continue
 			output_sentence = ' '.join(output_words)
 			# TODO: need to access this function somehow
 			bleu_score = calculateBleu(output_sentence, test_pair[1])
 			perplexity_score = perplexity_model.perplexity(output_sentence)
 			#TODO:
 			#meteor_score = ...
-			if i < 10:
+			if i < 20:
 				print('> [%s]'%test_pair[0])
 				print('= [%s]'%test_pair[1])
 				print('< [%s]'%output_sentence)
@@ -394,8 +400,9 @@ class Seq2Seq:
 			bleu_total += bleu_score
 			perplexity_total += perplexity_score
 			
-		avg_bleu = bleu_total / len(self.test_pairs)
-		avg_perplexity = perplexity_total / len(self.test_pairs)
+		avg_bleu = bleu_total / (len(self.test_pairs) - empty_sentences)
+		avg_perplexity = perplexity_total / (len(self.test_pairs) - empty_sentences)
+		print('Predicted a total of %d empty sentences.'%empty_sentences)
 		print('Average BLEU score = ' + str(avg_bleu))
 		print('Average Perplexity score = ' + str(avg_perplexity))
 		return avg_bleu, avg_perplexity
