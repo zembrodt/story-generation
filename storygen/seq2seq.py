@@ -378,11 +378,11 @@ class Seq2Seq:
 		empty_sentences = 0
 		for test_pair in self.test_pairs:
 			output_words, attentions = self.evaluate(test_pair[0], input_book, output_book)
-                        if len(output_words) == 0:
-                            print('We outputted an empty sentence! Skipping...')
-                            print('Test pair:\n\t>%s\n\t=%s'%(test_pair[0], test_pair[1]))
-                            empty_sentences += 1
-                            continue
+			if len(output_words) == 0:
+			    print('We outputted an empty sentence! Skipping...')
+			    print('Test pair:\n\t>%s\n\t=%s'%(test_pair[0], test_pair[1]))
+			    empty_sentences += 1
+			    continue
 			output_sentence = ' '.join(output_words)
 			# TODO: need to access this function somehow
 			bleu_score = calculateBleu(output_sentence, test_pair[1])
