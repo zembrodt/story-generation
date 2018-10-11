@@ -146,4 +146,6 @@ def convertLinesToSentences(lines, contraction_dict):
                     for k, convertedWord in enumerate(convertedWords[1:]):
                         sentenceSplit.insert(j+k+1, convertedWord)
             sentences[i] = ' '.join(sentenceSplit)
-    return sentences
+
+    # Final catch to remove any empty sentences
+    return [sentence for sentence in sentences if len(sentence) > 0]
