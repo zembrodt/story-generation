@@ -249,7 +249,7 @@ class Seq2Seq:
 	def trainIters(self, n_iters, input_book, output_book, print_every=1000, learning_rate=0.01):
 		if self.encoder is None or self.decoder is None:
 			self.encoder = EncoderRNN(input_book.n_words, self.hidden_size).to(self.device)
-			self.decoder = DecoderRNN(hidden_size, output_book.n_words, self.max_length).to(self.device)
+			self.decoder = DecoderRNN(self.hidden_size, output_book.n_words, self.max_length).to(self.device)
 
 		#n_iters == iterations
 		#epochs = iterations / num of examples
@@ -260,7 +260,7 @@ class Seq2Seq:
 		self.decoder_optimizer = optim.SGD(self.decoder.parameters(), lr=learning_rate)
 		#training_pairs = [tensorsFromPair(random.choice(pairs))
 		#                  for i in range(n_iters)]
-		training_pairs = [tensorsFromPair(random.choice(self.train_pairs), input_book, output_book) for i in range(n_iters)]
+		training_pairs = [tensorsFromPair(random.choice(self.train_pairs), input_book, output_book, self.device) for i in range(n_iters)]
 		self.criterion = nn.NLLLoss()
 
 		
