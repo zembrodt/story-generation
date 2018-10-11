@@ -32,7 +32,7 @@ def main():
     print('Random words score: %.4f'%random_words_score)
 
     # Sentence segments (n-grams)
-    n_gram_lengths = [1,2,3,4,6]
+    n_gram_lengths = [1,2,3,4,6,8,12]
     for n_gram in n_gram_lengths:
         n_grams = []
         for sentence in sentences:
@@ -51,7 +51,7 @@ def main():
             else:
                 incorrect_lengths += 1
         n_gram_score /= (len(sentences) - incorrect_lengths)
-        print('%d-gram score: %.4f\n%d sentences were found with an incorrect length.'%(n_gram, n_gram_score, incorrect_lengths))
+        print('%d-gram score: %.4f\n%.2f%% of sentences not included.'%(n_gram, n_gram_score, float(incorrect_lengths)/len(sentences) * 100))
 
 if __name__ == '__main__':
     main()
