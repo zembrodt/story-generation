@@ -288,8 +288,8 @@ class Seq2Seq:
 					progress_percent = (i*len(training_pairs)+j)/(epochs*len(training_pairs))
 					t = -1.0
 					if progress_percent > 0:
-                                            t = timeSince(start, progress_percent)
-					print('%s (%d %d%%) %.4f' % (t, (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
+					    t = timeSince(start, progress_percent)
+					print('%s (%d %.2f%%) %.4f' % (t, (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
 		
 	######################################################################
 	# Evaluation
@@ -363,8 +363,8 @@ class Seq2Seq:
 			## More code for perplexity ##
 			if self.i == 0:
 			    print('total summation: %.4f\nN: %d'%(summation, N))
-			summation /= N
-			perplexity = math.log(-summation)
+
+			perplexity = pow(math.e, -summation / N)
 			if self.i == 0:
 			    print('1/N*summation: %.4f\nperplexity: %.4f'%(summation, perplexity))
 			    self.i+=1
