@@ -150,11 +150,11 @@ class DecoderRNN(nn.Module):
         return torch.zeros(1, 1, self.hidden_size, device=device)
 		
 class Seq2Seq:
-	def __init__(self, train_pairs, test_pairs, max_length, hidden_size, device):
+	def __init__(self, input_book, output_book, max_length, hidden_size, device):
 		self.encoder = None
 		self.decoder = None
-		self.train_pairs = train_pairs
-		self.test_pairs = test_pairs
+		self.input_book = input_book
+		self.output_book = output_book
 		self.max_length = max_length
 		self.hidden_size = hidden_size
 		self.device = device
@@ -165,7 +165,7 @@ class Seq2Seq:
 		#for testing
 		self.i = 0
 
-	def loadFromFiles(self, encoder_filename, decoder_filename, input_book, output_book):
+	def loadFromFiles(self, encoder_filename, decoder_filename):
 		# Check that the path for both files exists
 		os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
 		os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
@@ -175,10 +175,10 @@ class Seq2Seq:
 
 		if encoder_file.is_file() and decoder_file.is_file():
 			print("Loading encoder and decoder from files...")
-			self.encoder = EncoderRNN(input_book.n_words, self.hidden_size).to(self.device)
+			self.encoder = EncoderRNN(self.input_book.n_words, self.hidden_size).to(self.device)
 			self.encoder.load_state_dict(torch.load(encoder_file))
 			
-			self.decoder = DecoderRNN(self.hidden_size, output_book.n_words, self.max_length).to(self.device)
+			self.decoder = DecoderRNN(self.hidden_size, self.output_book.n_words, self.max_length).to(self.device)
 			self.decoder.load_state_dict(torch.load(decoder_file))
 
 			return True
@@ -256,11 +256,11 @@ class Seq2Seq:
 	#
 	# Then we call "train" many times and occasionally print the progress (%
 	# of examples, time so far, estimated time) and average loss.
-	def trainIters(self, epochs, input_book, output_book, print_every=1000, learning_rate=0.01):
+	def trainIters(self, train_pairs, epochs, print_every=1000, learning_rate=0.01):
                 # If we didn't load the encoder/decoder from files, create new ones to train
 		if self.encoder is None or self.decoder is None:
-			self.encoder = EncoderRNN(input_book.n_words, self.hidden_size).to(self.device)
-			self.decoder = DecoderRNN(self.hidden_size, output_book.n_words, self.max_length).to(self.device)
+			self.encoder = EncoderRNN(self.input_book.n_words, self.hidden_size).to(self.device)
+			self.decoder = DecoderRNN(self.hidden_size, self.output_book.n_words, self.max_length).to(self.device)
 
 		start = time.time()
 		print_loss_total = 0  # Reset every print_every
@@ -268,7 +268,7 @@ class Seq2Seq:
 		self.encoder_optimizer = optim.SGD(self.encoder.parameters(), lr=learning_rate)
 		self.decoder_optimizer = optim.SGD(self.decoder.parameters(), lr=learning_rate)
 		
-		training_pairs = [tensorsFromPair(train_pair, input_book, output_book, self.device) for train_pair in train_pairs]
+		training_pairs = [tensorsFromPair(train_pair, self.input_book, self.output_book, self.device) for train_pair in train_pairs]
 		random.shuffle(training_pairs)
 		
 		self.criterion = nn.NLLLoss()
@@ -286,7 +286,10 @@ class Seq2Seq:
 					print_loss_avg = print_loss_total / print_every
 					print_loss_total = 0
 					progress_percent = (i*len(training_pairs)+j)/(epochs*len(training_pairs))
-					print('%s (%d %d%%) %.4f' % (timeSince(start, progress_percent), (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
+					t = -1.0
+					if progress_percent > 0:
+                                            t = timeSince(start, progress_percent)
+					print('%s (%d %d%%) %.4f' % (t, (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
 		
 	######################################################################
 	# Evaluation
@@ -299,9 +302,9 @@ class Seq2Seq:
 	# attention outputs for display later.
 	#
 
-	def evaluate(self, sentence, input_book, output_book):
+	def evaluate(self, sentence):
 		with torch.no_grad():
-			input_tensor = tensorFromSentence(input_book, sentence, self.device)
+			input_tensor = tensorFromSentence(self.input_book, sentence, self.device)
 			input_length = input_tensor.size()[0]
 			encoder_hidden = self.encoder.initHidden(self.device)
 
@@ -332,18 +335,18 @@ class Seq2Seq:
 				    print('decoder_output.data:\n%s'%str(decoder_output.data))
 				    topv,topi=decoder_output.data.topk(1)
 				    print('\ndecoder_output.data.topk(1):\n%s'%str(decoder_output.data.topk(1)))
-				    print('\ttopv = %s\n\ttopi = %s\n\ttopi.item = %s\n\tword = %s'%(str(topv), str(topi), str(topi.item()), output_book.index2word[topi.item()]))
+				    print('\ttopv = %s\n\ttopi = %s\n\ttopi.item = %s\n\tword = %s'%(str(topv), str(topi), str(topi.item()), self.output_book.index2word[topi.item()]))
 				    topv,topi=decoder_output.data.topk(2)
 				    topi = topi[0][1]
 				    print('\ndecoder_output.data.topk(2):\n%s'%str(decoder_output.data.topk(2)))
-				    print('\ttopv = %s\n\ttopi = %s\n\ttopi.item = %s\n\tword = %s'%(str(topv), str(topi), str(topi.item()), output_book.index2word[topi.item()]))
+				    print('\ttopv = %s\n\ttopi = %s\n\ttopi.item = %s\n\tword = %s'%(str(topv), str(topi), str(topi.item()), self.output_book.index2word[topi.item()]))
 
 				topv, topi = decoder_output.data.topk(1)
 
 				## Perplexity code ##
 				summation += topv.item()
 				if self.i == 0:
-				    print('topv.item: %.4f\ntopi.item: %d\nword: "%s"'%(topv.item(), topi.item(), output_book.index2word[topi.item()]))
+				    print('topv.item: %.4f\ntopi.item: %d\nword: "%s"'%(topv.item(), topi.item(), self.output_book.index2word[topi.item()]))
 				##
 				
 				if topi.item() == bk.STOP_ID:
@@ -353,7 +356,7 @@ class Seq2Seq:
 					break
 				else:
 					# Decode the predicted word from the book 
-					decoded_words.append(output_book.index2word[topi.item()])
+					decoded_words.append(self.output_book.index2word[topi.item()])
 
 				decoder_input = topi.squeeze().detach()
 
@@ -372,7 +375,7 @@ class Seq2Seq:
 	######################################################################
 	# Evaluates each pair given in the test set
 	# Returns BLEU, METEOR, and perplexity scores
-	def evaluateTestSet(self, input_book, output_book, perplexity_model):
+	def evaluateTestSet(self, test_pairs):
 		i = 0
 		CAP = 15
 		print('Printing first %d evaluations:'%CAP)
@@ -381,8 +384,8 @@ class Seq2Seq:
 		perplexity_total = 0.0
 		# may no longer need empty_sentences...
 		empty_sentences = 0
-		for test_pair in self.test_pairs:
-			output_words, attentions, perplexity_score = self.evaluate(test_pair[0], input_book, output_book)
+		for test_pair in test_pairs:
+			output_words, attentions, perplexity_score = self.evaluate(test_pair[0])
 			if len(output_words) == 0:
 			    print('We outputted an empty sentence! Skipping...')
 			    print('Test pair:\n\t>%s\n\t=%s'%(test_pair[0], test_pair[1]))

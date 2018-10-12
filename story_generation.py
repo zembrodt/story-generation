@@ -87,8 +87,6 @@ def main():
 
 	sentences = getSentencesFromBook(book_title)
 	
-	perplexity_model = pyplexity.PerplexityModel(sentences)
-	
 	train_pairs, test_pairs = getPairs(sentences)
         
 	input_book, output_book = getBooks(book_title, train_pairs, test_pairs)
@@ -99,12 +97,12 @@ def main():
 		encoder_filename = ENCODER_FILE_FORMAT % epoch_size
 		decoder_filename = DECODER_FILE_FORMAT % epoch_size
 
-		network = seq2seq.Seq2Seq(train_pairs, test_pairs, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
-		if not network.loadFromFiles(encoder_filename, decoder_filename, input_book, output_book):
-			network.trainIters(epoch_size, input_book, output_book)
+		network = seq2seq.Seq2Seq(input_book, output_book, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
+		if not network.loadFromFiles(encoder_filename, decoder_filename):
+			network.trainIters(train_pairs, epoch_size)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
-		bleu_score, meteor_score, perplexity_score = network.evaluateTestSet(input_book, output_book, perplexity_model)
+		bleu_score, meteor_score, perplexity_score = network.evaluateTestSet(test_pairs)
 		print('BLEU Score for %d epochs: %.4f' % (epoch_size, bleu_score))
 		print('METEOR Score for %d epochs: %.4f' % (epoch_size, meteor_score))
 		print('Perplexity score for %d epochs: %.4f' % (epoch_size, perplexity_score))
