@@ -91,22 +91,21 @@ def main():
         
 	input_book, output_book = getBooks(book_title, train_pairs, test_pairs)
 	
-	epoch_sizes = [1]#[100, 200, 400, 600]
+	epoch_sizes = [10]#[100, 200, 400, 600]
 	for epoch_size in epoch_sizes:
 		print('Epoch size: %d' % epoch_size)
 		encoder_filename = ENCODER_FILE_FORMAT % epoch_size
 		decoder_filename = DECODER_FILE_FORMAT % epoch_size
 
-		ITER_AMOUNT = 10000
-
 		network = seq2seq.Seq2Seq(train_pairs, test_pairs, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
 		if not network.loadFromFiles(encoder_filename, decoder_filename, input_book, output_book):
-			network.trainIters(ITER_AMOUNT, input_book, output_book)
+			network.trainIters(epoch_size, input_book, output_book)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
-		bleu_score, perplexity_score = network.evaluateRandomly(input_book, output_book, perplexity_model)
-		print('BLEU Score for %d epochs: %.4f' % (bleu_score, epoch_size))
-		print('Perplexity score for %d epochs: %.4f' % (perplexity_score, epoch_size))
+		bleu_score, meteor_score, perplexity_score = network.evaluateTestSet(input_book, output_book, perplexity_model)
+		print('BLEU Score for %d epochs: %.4f' % (epoch_size, bleu_score))
+		print('METEOR Score for %d epochs: %.4f' % (epoch_size, meteor_score))
+		print('Perplexity score for %d epochs: %.4f' % (epoch_size, perplexity_score))
 
 		# Generate test story
 		"""

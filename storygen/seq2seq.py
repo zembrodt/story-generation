@@ -14,6 +14,7 @@ import torch.nn.functional as F
 from nltk.translate.bleu_score import sentence_bleu
 
 import storygen.book as bk
+import pymeteor.pymeteor as pymeteor
 
 ## HELPER FUNCTIONS ##
 def indexesFromSentence(book, sentence):
@@ -141,6 +142,7 @@ class DecoderRNN(nn.Module):
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
 
+        # log_softmax uses log base e
         output = F.log_softmax(self.out(output[0]), dim=1)
         return output, hidden, attn_weights
 
@@ -173,11 +175,11 @@ class Seq2Seq:
 
 		if encoder_file.is_file() and decoder_file.is_file():
 			print("Loading encoder and decoder from files...")
-                        self.encoder = EncoderRNN(input_book.n_words, self.hidden_size).to(self.device)
-                        self.encoder.load_state_dict(torch.load(encoder_file))
-                        
-                        self.decoder = DecoderRNN(self.hidden_size, output_book.n_words, self.max_length).to(self.device)
-                        self.decoder.load_state_dict(torch.load(decoder_file))
+			self.encoder = EncoderRNN(input_book.n_words, self.hidden_size).to(self.device)
+			self.encoder.load_state_dict(torch.load(encoder_file))
+			
+			self.decoder = DecoderRNN(self.hidden_size, output_book.n_words, self.max_length).to(self.device)
+			self.decoder.load_state_dict(torch.load(decoder_file))
 
 			return True
 		return False
@@ -187,13 +189,13 @@ class Seq2Seq:
 		os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
 		os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
 
-                encoder_file = Path(encoder_filename)
+		encoder_file = Path(encoder_filename)
 		decoder_file = Path(decoder_filename)
 
 		torch.save(self.encoder.state_dict(), encoder_file)
 		torch.save(self.decoder.state_dict(), decoder_file)
 	
-	def train(self, input_tensor, target_tensor, teacher_forcing_ratio=0.5):
+	def _train(self, input_tensor, target_tensor, teacher_forcing_ratio=0.5):
 		encoder_hidden = self.encoder.initHidden(self.device)
 
 		self.encoder_optimizer.zero_grad()
@@ -252,79 +254,40 @@ class Seq2Seq:
 	# -  Create set of training pairs
 	# -  Start empty losses array for plotting
 	#
-	# Then we call ``train`` many times and occasionally print the progress (%
+	# Then we call "train" many times and occasionally print the progress (%
 	# of examples, time so far, estimated time) and average loss.
-	def trainIters(self, n_iters, input_book, output_book, print_every=1000, learning_rate=0.01):
+	def trainIters(self, epochs, input_book, output_book, print_every=1000, learning_rate=0.01):
+                # If we didn't load the encoder/decoder from files, create new ones to train
 		if self.encoder is None or self.decoder is None:
 			self.encoder = EncoderRNN(input_book.n_words, self.hidden_size).to(self.device)
 			self.decoder = DecoderRNN(self.hidden_size, output_book.n_words, self.max_length).to(self.device)
 
-		#n_iters == iterations
-		#epochs = iterations / num of examples
 		start = time.time()
 		print_loss_total = 0  # Reset every print_every
 
 		self.encoder_optimizer = optim.SGD(self.encoder.parameters(), lr=learning_rate)
 		self.decoder_optimizer = optim.SGD(self.decoder.parameters(), lr=learning_rate)
-		#training_pairs = [tensorsFromPair(random.choice(pairs))
-		#                  for i in range(n_iters)]
-		training_pairs = [tensorsFromPair(random.choice(self.train_pairs), input_book, output_book, self.device) for i in range(n_iters)]
-		self.criterion = nn.NLLLoss()
-
 		
-		#reachedLoss = False
-
-		# while epochs != 100 (param)
-			# for i in train
-				# run network
-			# epochs++
-			# don't break if loss < 1, let it run for all epochs for now
-		# new code
-		"""
+		training_pairs = [tensorsFromPair(train_pair, input_book, output_book, self.device) for train_pair in train_pairs]
+		random.shuffle(training_pairs)
+		
+		self.criterion = nn.NLLLoss()
+		
+		# Iterate through the training set over a set amount of epochs
+		# Output the progress and current loss value
 		for i in range(epochs):
-			for j, train_pair in enumerate(train_pairs):
-				pair = tensorsFromPair(train_pair, input_book, output_book)
+			for j, pair in enumerate(training_pairs):
 				input_tensor = pair[0]
 				target_tensor = pair[1]
-				loss = train(input_tensor, target_tensor, encoder,
-						 decoder, encoder_optimizer, decoder_optimizer, criterion)
+				loss = self._train(input_tensor, target_tensor)
 				print_loss_total += loss
-				plot_loss_total += loss
 
 				if j % print_every == 0:
 					print_loss_avg = print_loss_total / print_every
 					print_loss_total = 0
-					#print('%s (%d %d%%) %.4f' % (timeSince(start, iter / n_iters),
-					#                             iter, iter / n_iters * 100, print_loss_avg))
-					now = time.time()
-					print('%s, epoch=%d, (%d%%) loss_avg=%.4f' % (asMinutes(now - start), i+1, 100*int(j / len(train_pairs)), print_loss_avg))
-				#if j % plot_every == 0:
-				#    plot_loss_avg = plot_loss_total / plot_every
-				#    plot_losses.append(plot_loss_avg)
-				#    plot_loss_total = 0
-				#if loss < 1.0:
-				#    reachedLoss = True
-			# DON'T use for now
-			#if reachedLoss:
-			#    break
-		"""
-		# original code
-		#"""
-		for iter in range(1, n_iters + 1):
-			training_pair = training_pairs[iter - 1]
-			input_tensor = training_pair[0]
-			target_tensor = training_pair[1]
-
-			loss = self.train(input_tensor, target_tensor)#, encoder,
-						 #decoder, encoder_optimizer, decoder_optimizer, criterion)
-			print_loss_total += loss
-
-			if iter % print_every == 0:
-				print_loss_avg = print_loss_total / print_every
-				print_loss_total = 0
-				print('%s (%d %d%%) %.4f' % (timeSince(start, iter / n_iters),
-											 iter, iter / n_iters * 100, print_loss_avg))
-
+					progress_percent = (i*len(training_pairs)+j)/(epochs*len(training_pairs))
+					print('%s (%d %d%%) %.4f' % (timeSince(start, progress_percent), (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
+		
 	######################################################################
 	# Evaluation
 	# ==========
@@ -345,8 +308,7 @@ class Seq2Seq:
 			encoder_outputs = torch.zeros(self.max_length, self.encoder.hidden_size, device=self.device)
 
 			for ei in range(input_length):
-				encoder_output, encoder_hidden = self.encoder(input_tensor[ei],
-														 encoder_hidden)
+				encoder_output, encoder_hidden = self.encoder(input_tensor[ei], encoder_hidden)
 				encoder_outputs[ei] += encoder_output[0, 0]
 
 			decoder_input = torch.tensor([[bk.START_ID]], device=self.device)  # SOL
@@ -356,7 +318,11 @@ class Seq2Seq:
 			decoded_words = []
 			decoder_attentions = torch.zeros(self.max_length, self.max_length)
 
+			summation = 0.0
+			N = 0
+
 			for di in range(self.max_length):
+				N += 1
 				decoder_output, decoder_hidden, decoder_attention = self.decoder(
 					decoder_input, decoder_hidden, encoder_outputs)
 				decoder_attentions[di] = decoder_attention.data
@@ -371,8 +337,15 @@ class Seq2Seq:
 				    topi = topi[0][1]
 				    print('\ndecoder_output.data.topk(2):\n%s'%str(decoder_output.data.topk(2)))
 				    print('\ttopv = %s\n\ttopi = %s\n\ttopi.item = %s\n\tword = %s'%(str(topv), str(topi), str(topi.item()), output_book.index2word[topi.item()]))
-				    self.i += 1
+
 				topv, topi = decoder_output.data.topk(1)
+
+				## Perplexity code ##
+				summation += topv.item()
+				if self.i == 0:
+				    print('topv.item: %.4f\ntopi.item: %d\nword: "%s"'%(topv.item(), topi.item(), output_book.index2word[topi.item()]))
+				##
+				
 				if topi.item() == bk.STOP_ID:
 					# DON'T NEED? Will add this token to the end of some sentences
 					# May ruin our BLEU/METEOR scores
@@ -384,45 +357,60 @@ class Seq2Seq:
 
 				decoder_input = topi.squeeze().detach()
 
-			return decoded_words, decoder_attentions[:di + 1]
+			## More code for perplexity ##
+			if self.i == 0:
+			    print('total summation: %.4f\nN: %d'%(summation, N))
+			summation /= N
+			perplexity = math.log(-summation)
+			if self.i == 0:
+			    print('1/N*summation: %.4f\nperplexity: %.4f'%(summation, perplexity))
+			    self.i+=1
+			##
+
+			return decoded_words, decoder_attentions[:di + 1], perplexity
 	
 	######################################################################
-	# We can evaluate random sentences from the training set and print out the
-	# input, target, and output to make some subjective quality judgements:
-	# THIS ACTUALLY NOW EVALUATES ALL SENTENCES IN THE TEST SET
-	def evaluateRandomly(self, input_book, output_book, perplexity_model):
+	# Evaluates each pair given in the test set
+	# Returns BLEU, METEOR, and perplexity scores
+	def evaluateTestSet(self, input_book, output_book, perplexity_model):
 		i = 0
-		print('Printing first 10 evaluations:')
+		CAP = 15
+		print('Printing first %d evaluations:'%CAP)
 		bleu_total = 0.0
+		meteor_total = 0.0
 		perplexity_total = 0.0
+		# may no longer need empty_sentences...
 		empty_sentences = 0
 		for test_pair in self.test_pairs:
-			output_words, attentions = self.evaluate(test_pair[0], input_book, output_book)
+			output_words, attentions, perplexity_score = self.evaluate(test_pair[0], input_book, output_book)
 			if len(output_words) == 0:
 			    print('We outputted an empty sentence! Skipping...')
 			    print('Test pair:\n\t>%s\n\t=%s'%(test_pair[0], test_pair[1]))
 			    empty_sentences += 1
 			    continue
 			output_sentence = ' '.join(output_words)
-			# TODO: need to access this function somehow
+			
 			bleu_score = calculateBleu(output_sentence, test_pair[1])
-			perplexity_score = perplexity_model.perplexity(output_sentence)
-			#TODO:
-			#meteor_score = ...
-			if i < 20:
+			meteor_score = pymeteor.meteor(output_sentence, test_pair[1])
+			
+			if i < CAP:
 				print('> [%s]'%test_pair[0])
 				print('= [%s]'%test_pair[1])
 				print('< [%s]'%output_sentence)
-				print('BLEU: %.4f'%bleu_score)
+				print('BLEU:       %.4f'%bleu_score)
+				print('METEOR:     %.4f'%meteor_score)
 				print('Perplexity: %.4f'%perplexity_score)
-			i += 1
-			# Calculate BLEU score
+				i += 1
+				
 			bleu_total += bleu_score
+			meteor_total += meteor_score
 			perplexity_total += perplexity_score
 			
 		avg_bleu = bleu_total / (len(self.test_pairs) - empty_sentences)
+		avg_meteor = meteor_total / (len(self.test_pairs) - empty_sentences)
 		avg_perplexity = perplexity_total / (len(self.test_pairs) - empty_sentences)
 		print('Predicted a total of %d empty sentences.'%empty_sentences)
 		print('Average BLEU score = ' + str(avg_bleu))
+		print('Average METEOR score = ' + str(avg_meteor))
 		print('Average Perplexity score = ' + str(avg_perplexity))
-		return avg_bleu, avg_perplexity
+		return avg_bleu, avg_meteor, avg_perplexity
