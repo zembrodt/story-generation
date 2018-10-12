@@ -409,9 +409,9 @@ class Seq2Seq:
 			meteor_total += meteor_score
 			perplexity_total += perplexity_score
 			
-		avg_bleu = bleu_total / (len(self.test_pairs) - empty_sentences)
-		avg_meteor = meteor_total / (len(self.test_pairs) - empty_sentences)
-		avg_perplexity = perplexity_total / (len(self.test_pairs) - empty_sentences)
+		avg_bleu = bleu_total / (len(test_pairs) - empty_sentences)
+		avg_meteor = meteor_total / (len(test_pairs) - empty_sentences)
+		avg_perplexity = perplexity_total / (len(test_pairs) - empty_sentences)
 		print('Predicted a total of %d empty sentences.'%empty_sentences)
 		print('Average BLEU score = ' + str(avg_bleu))
 		print('Average METEOR score = ' + str(avg_meteor))
