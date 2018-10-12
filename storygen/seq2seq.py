@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from nltk.translate.bleu_score import sentence_bleu
 
 import storygen.book as bk
-import pymeteor.pymeteor as pymeteor
+import pymeteor.pymeteor.pymeteor as pymeteor
 
 ## HELPER FUNCTIONS ##
 def indexesFromSentence(book, sentence):

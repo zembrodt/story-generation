@@ -14,9 +14,11 @@ import nltk
 import storygen.seq2seq as seq2seq
 import storygen.book as book
 import pyplexity.pyplexity as pyplexity
-import pymeteor.pymeteor as pymeteor
+import pymeteor.pymeteor.pymeteor as pymeteor
 
-# Consts
+x = pymeteor.meteor('test', 'test2')
+
+#Consts
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAX_LENGTH = 1024
 HIDDEN_SIZE = 256
