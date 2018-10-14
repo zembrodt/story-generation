@@ -72,7 +72,7 @@ def convertLinesToSentences(lines, contraction_dict):
     # Split into sentences:
     parsedLines = []
     for line in lines:
-        lineList = line.strip().split(' ')
+        lineList = line.strip().split()
 
 	# pre-parsing
         for i, word in enumerate(lineList):
