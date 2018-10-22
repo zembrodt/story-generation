@@ -13,7 +13,6 @@ import nltk
 
 import storygen.seq2seq as seq2seq
 import storygen.book as book
-import pyplexity.pyplexity as pyplexity
 import pymeteor.pymeteor.pymeteor as pymeteor
 
 x = pymeteor.meteor('test', 'test2')

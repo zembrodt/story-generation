@@ -1,7 +1,6 @@
 # perplexity_study.py
 import random
 
-import pyplexity.pyplexity as pyplexity
 import story_generation as storygen
 import storygen.book as bk
 import storygen.seq2seq as seq2seq
