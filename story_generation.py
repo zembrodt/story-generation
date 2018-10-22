@@ -91,7 +91,7 @@ def main():
         
 	input_book, output_book = getBooks(book_title, train_pairs, test_pairs)
 	
-	epoch_sizes = [10]#[100, 200, 400, 600]
+	epoch_sizes = [25]#[100, 200, 400, 600]
 	for epoch_size in epoch_sizes:
 		print('Epoch size: %d' % epoch_size)
 		encoder_filename = ENCODER_FILE_FORMAT % epoch_size
@@ -102,10 +102,17 @@ def main():
 			network.trainIters(train_pairs, epoch_size)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
-		bleu_score, meteor_score, perplexity_score = network.evaluateTestSet(test_pairs)
-		print('BLEU Score for %d epochs: %.4f' % (epoch_size, bleu_score))
-		print('METEOR Score for %d epochs: %.4f' % (epoch_size, meteor_score))
-		print('Perplexity score for %d epochs: %.4f' % (epoch_size, perplexity_score))
+		bleu_score, meteor_score, perplexity_score, beam_bleu_score, beam_meteor_score, beam_perplexity_score = network.evaluateTestSet(test_pairs)
+		
+		print('evaluate:')
+		print('\tBLEU Score for %d epochs: %.4f' % (epoch_size, bleu_score))
+		print('\tMETEOR Score for %d epochs: %.4f' % (epoch_size, meteor_score))
+		print('\tPerplexity score for %d epochs: %.4f' % (epoch_size, perplexity_score))
+
+		print('Beam search:')
+		print('\tBLEU Score for %d epochs: %.4f' % (epoch_size, beam_bleu_score))
+		print('\tMETEOR Score for %d epochs: %.4f' % (epoch_size, beam_meteor_score))
+		print('\tPerplexity score for %d epochs: %.4f' % (epoch_size, beam_perplexity_score))
 
 		# Generate test story
 		"""
