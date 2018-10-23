@@ -399,7 +399,8 @@ class Seq2Seq:
 				results.append(BeamSearchResult(topv.squeeze()[i].item(), topi.squeeze()[i].detach(), decoder_hidden))
 			###
 			# Expand the search for topk for each result until we have 5 sentences:
-			while True:
+			sentence_length = 0
+			while sentence_length <= self.max_length:
 				new_results = [] # We will have k*k results in this after for-loop, then sort and take best k
 				still_searching = False
 				for result in results:
@@ -420,6 +421,8 @@ class Seq2Seq:
 				results = sorted(new_results, key=operator.attrgetter('score'))[::-1][:k]
 				if not still_searching:
 					break
+				# Prevent beam_search from being stuck in an infinite loop
+				sentence_length += 1
 			###
 			
 			return results
