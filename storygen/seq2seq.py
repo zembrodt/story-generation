@@ -57,13 +57,13 @@ def calculateBleu(candidate, reference, n_gram=2):
 def asMinutes(s):
     m = math.floor(s / 60)
     s -= m * 60
-    return '%dm %ds' % (m, s)
+    return '{}m {}s'.format(m, s)
 def timeSince(since, percent):
     now = time.time()
     s = now - since
     es = s / (percent)
     rs = es - s
-    return '%s (- %s)' % (asMinutes(s), asMinutes(rs))
+    return '{} (- {})'.format(asMinutes(s), asMinutes(rs))
 ######################
 
 # Object used in Beam Search to keep track of the results at each depth of the search tree
@@ -94,7 +94,7 @@ class BeamSearchResult:
         def calculate_perplexity(self):
                 return pow(math.e, -self.score / len(self.items))
         def __repr__(self):
-                return 'BeamSearchResult: score=%.4f, stopped=%s, words="%s"'%(self.score, str(self.stopped), ' '.join(self.words))
+                return 'BeamSearchResult: score={:.4f}, stopped={}, words="{}"'.format(self.score, str(self.stopped), ' '.join(self.words))
 
 ######################################################################
 # The Seq2Seq Model
@@ -244,7 +244,7 @@ class Seq2Seq:
                     t = -1.0
                     if progress_percent > 0:
                         t = timeSince(start, progress_percent)
-                    print('%s (%d %.2f%%) %.4f' % (t, (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
+                    print('{} ({} {:.2f}%) {:.4f}'.format(t, (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
         
     ######################################################################
     # Evaluation
@@ -345,6 +345,7 @@ class Seq2Seq:
             
             return results
 
+    # Forces the model to generate the 'sentence_to_evaluate' and records its perplexity per word
     def _evaluate_specified(self, sentence, sentence_to_evaluate):
         with torch.no_grad():
             input_tensor = tensorFromSentence(self.input_book, sentence, self.device)
@@ -397,7 +398,8 @@ class Seq2Seq:
 
             # note: decoder_attentions not properly set up in this function
 
-            return decoded_words, decoder_attentions, perplexity
+            #return decoded_words, decoder_attentions, perplexity
+            return perplexity
 
     def evaluate(self, sentence):
         with torch.no_grad():
@@ -419,11 +421,11 @@ class Seq2Seq:
             decoded_words = []
             decoder_attentions = torch.zeros(self.max_length, self.max_length)
 
-            summation = 0.0
-            N = 0
+            #summation = 0.0
+            #N = 0
 
             for di in range(self.max_length):
-                N += 1
+                #N += 1
                 decoder_output, decoder_hidden, decoder_attention = self.decoder(
                     decoder_input, decoder_hidden, encoder_outputs)
                 decoder_attentions[di] = decoder_attention.data
@@ -433,7 +435,7 @@ class Seq2Seq:
                 topv, topi = decoder_output.data.topk(1)
 
                 ## Perplexity code ##
-                summation += topv.item()
+                #summation += topv.item()
                 
                 if topi.item() == STOP_ID:
                     #decoded_words.append('<EOL>')
@@ -445,35 +447,39 @@ class Seq2Seq:
                 decoder_input = topi.squeeze().detach()
 
             ## More code for perplexity ##
-            perplexity = math.pow(math.e, -summation / N)
+            #perplexity = math.pow(math.e, -summation / N)
             ##
 
-            return decoded_words, decoder_attentions[:di + 1], perplexity
+            return decoded_words, decoder_attentions[:di + 1]
     
     ######################################################################
     # Evaluates each pair given in the test set
     # Returns BLEU, METEOR, and perplexity scores
-    def evaluateTestSet(self, test_pairs):
+    def evaluate_test_set(self, test_pairs):
         i = 0
         CAP = 15
-        print('Printing first %d evaluations:'%CAP)
+        print('Printing first {} evaluations:'.format(CAP))
         bleu_total = 0.0
         meteor_total = 0.0
-        perplexity_total = 0.0
 
         beam_bleu_total = 0.0
         beam_meteor_total = 0.0
-        beam_perplexity_total = 0.0
+        
+        perplexity_total = 0.0
         
         # may no longer need empty_sentences...
         empty_sentences = 0
         beam_empty_sentences = 0
         for test_pair in test_pairs:
-                        # Predict using evaluate
-            output_words, attentions, perplexity_score = self.evaluate(test_pair[0])
+            # Calculate perplexity of the test pair
+            perplexity = self._evaluate_specified(test_pair[0], test_pair[1])
+            perplexity_total += perplexity
+            
+            # Predict using evaluate
+            output_words, attentions = self.evaluate(test_pair[0])
             if len(output_words) == 0:
                 print('We outputted an empty sentence! Skipping...')
-                print('Test pair:\n\t>%s\n\t=%s'%(test_pair[0], test_pair[1]))
+                print('Test pair:\n\t> [{}]\n\t= [{}]'.format(test_pair[0], test_pair[1]))
                 empty_sentences += 1
                 beam_empty_sentences += 1
                 continue
@@ -481,62 +487,62 @@ class Seq2Seq:
             # Calculate BLEU and METEOR for evaluate
             bleu_score = calculateBleu(output_sentence, test_pair[1])
             meteor_score = pymeteor.meteor(output_sentence, test_pair[1])
+            # Add to totals
+            bleu_total += bleu_score
+            meteor_total += meteor_score
 
             #Predict using beam search
             k = 5
-            beam_result = self.beam_search(test_pair[0], k)[0] # Get the best result
+            beam_results = self.beam_search(test_pair[0], k) # Get the best result
+            beam_result = beam_results[0]
             if len(beam_result.words) == 0:
                 print('We outputted an empty beam sentence! Skipping...')
-                print('Test pair:\n\t>%s\n\t=%s'%(test_pair[0], test_pair[1]))
+                print('Test pair:\n\t> [{}]\n\t= [{}]'.format(test_pair[0], test_pair[1]))
                 beam_empty_sentences += 1
+                print('\tOther results:')
+                for beam_r in beam_results[1:]:
+                    print('\t{}'.format(' '.join(beam_r.words)))
                 continue
             beam_sentence = ' '.join(beam_result.words)
             # Calculate BLEU and METEOR for beam search
             beam_bleu_score = calculateBleu(beam_sentence, test_pair[1])
             beam_meteor_score = pymeteor.meteor(beam_sentence, test_pair[1])
-            beam_perplexity_score = beam_result.calculate_perplexity()
-            
-            if i < CAP:
-                print('> [%s]'%test_pair[0])
-                print('= [%s]'%test_pair[1])
-                print('evaluate:')
-                print('< [%s]'%output_sentence)
-                print('\tBLEU:       %.4f'%bleu_score)
-                print('\tMETEOR:     %.4f'%meteor_score)
-                print('\tPerplexity: %.4f'%perplexity_score)
-                print('Beam search (k=%d):'%k)
-                print('< [%s]'%beam_sentence)
-                print('\tBLEU:       %.4f'%beam_bleu_score)
-                print('\tMETEOR:     %.4f'%beam_meteor_score)
-                print('\tPerplexity: %.4f'%beam_perplexity_score)
-                i += 1
-                
-            bleu_total += bleu_score
-            meteor_total += meteor_score
-            perplexity_total += perplexity_score
-
+            # Add to totals
             beam_bleu_total += beam_bleu_score
             beam_meteor_total += beam_meteor_score
-            beam_perplexity_total += beam_perplexity_score
             
+            # Print first CAP results
+            if i < CAP:
+                print('> [{}]'.format(test_pair[0]))
+                print('= [{}]'.format(test_pair[1]))
+                print('\tPerplexity: {:.4f}'.format(perplexity))
+                print('evaluate:')
+                print('< [{}]'.format(output_sentence))
+                print('\tBLEU:       {:.4f}'.format(bleu_score))
+                print('\tMETEOR:     {:.4f}'.format(meteor_score))
+                print('Beam search (k={}):'.format(k))
+                print('< [{}]'.format(beam_sentence))
+                print('\tBLEU:       {:.4f}'.format(beam_bleu_score))
+                print('\tMETEOR:     {:.4f}'.format(beam_meteor_score))
+                i += 1
+
+        avg_perplexity = perplexity_total / len(test_pairs)
+        # Calculate averages for evaluate    
         avg_bleu = bleu_total / (len(test_pairs) - empty_sentences)
         avg_meteor = meteor_total / (len(test_pairs) - empty_sentences)
-        avg_perplexity = perplexity_total / (len(test_pairs) - empty_sentences)
-        
+        # Calculate averages for beam search
         beam_avg_bleu = beam_bleu_total / (len(test_pairs) - beam_empty_sentences)
         beam_avg_meteor = beam_meteor_total / (len(test_pairs) - beam_empty_sentences)
-        beam_avg_perplexity = beam_perplexity_total / (len(test_pairs) - beam_empty_sentences)
 
+        print('\tAverage Perplexity per word = {:.4f}'.format(avg_perplexity))
         print('evaluate:')
         print('\tPredicted a total of %d empty sentences.'%empty_sentences)
         print('\tAverage BLEU score = ' + str(avg_bleu))
         print('\tAverage METEOR score = ' + str(avg_meteor))
-        print('\tAverage Perplexity score = ' + str(avg_perplexity))
-        
         print('Beam search (k=%d):'%k)
         print('\tPredicted a total of %d empty sentences.'%beam_empty_sentences)
         print('\tAverage BLEU score = ' + str(beam_avg_bleu))
         print('\tAverage METEOR score = ' + str(beam_avg_meteor))
         print('\tAverage Perplexity score = ' + str(beam_avg_perplexity))
         
-        return avg_bleu, avg_meteor, avg_perplexity, beam_avg_bleu, beam_avg_meteor, beam_avg_perplexity
+        return avg_perplexity, avg_bleu, avg_meteor, beam_avg_bleu, beam_avg_meteor

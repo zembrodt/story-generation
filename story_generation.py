@@ -138,8 +138,9 @@ def main():
 			network.trainIters(train_pairs, epoch_size)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
-		bleu_score, meteor_score, perplexity_score, beam_bleu_score, beam_meteor_score, beam_perplexity_score = network.evaluateTestSet(test_pairs)
+		perplexity_score, bleu_score, meteor_score, beam_bleu_score, beam_meteor_score = network.evaluate_test_set(test_pairs)
 		
+		"""output in evaluateTestSet
 		print('evaluate:')
 		print('\tBLEU Score for %d epochs: %.4f' % (epoch_size, bleu_score))
 		print('\tMETEOR Score for %d epochs: %.4f' % (epoch_size, meteor_score))
@@ -149,6 +150,7 @@ def main():
 		print('\tBLEU Score for %d epochs: %.4f' % (epoch_size, beam_bleu_score))
 		print('\tMETEOR Score for %d epochs: %.4f' % (epoch_size, beam_meteor_score))
 		print('\tPerplexity score for %d epochs: %.4f' % (epoch_size, beam_perplexity_score))
+		"""
 
 		# Generate test story
 		"""
