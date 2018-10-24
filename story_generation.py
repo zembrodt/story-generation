@@ -24,6 +24,16 @@ ENCODER_FILE_FORMAT = 'obj/encoder_%d.torch'
 DECODER_FILE_FORMAT = 'obj/decoder_%d.torch'
 TRAIN_TEST_DATA_FILE_FORMAT = 'data/%s_%d_%s.txt'
 
+def get_sentences(book_title):
+	lines = open('data/%s.txt' % book_title, encoding='utf-8').read().strip().split('\n')
+	lines = [book.normalizeString(line) for line in lines if len(line) > 0]
+	with open('data/contractions_dictionary.txt', 'r') as f:
+		s = f.read()
+		contractions = eval(s)
+	contraction_dict = book.ContractionDict(contractions)
+	sentences = book.convertLinesToSentences(lines, contraction_dict)
+	return sentences
+		
 # Read all the lines from a book and convert them to an array of sentences
 def get_pairs(book_title, percentage):
 	print('Reading book...')
@@ -44,13 +54,7 @@ def get_pairs(book_title, percentage):
 		test_pairs = [item for item in zip(test_iter, test_iter)]
 	else:
 		print('Writing to file')
-		lines = open('data/%s.txt' % book_title, encoding='utf-8').read().strip().split('\n')
-		lines = [book.normalizeString(line) for line in lines if len(line) > 0]
-		with open('data/contractions_dictionary.txt', 'r') as f:
-			s = f.read()
-			contractions = eval(s)
-		contraction_dict = book.ContractionDict(contractions)
-		sentences = book.convertLinesToSentences(lines, contraction_dict)
+		sentences = get_sentences(book_title)
 		# Convert all sentences into pairs and split into training and testing data 
 		sentences_iter = iter(sentences)
 		next(sentences_iter)
