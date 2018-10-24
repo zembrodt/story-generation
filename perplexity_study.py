@@ -2,17 +2,15 @@
 import random
 
 import story_generation as storygen
-import storygen.book as bk
 import storygen.seq2seq as seq2seq
 
 # Study on the perplexity module using the provided text
 def main():
     book_title = '1_sorcerers_stone'
-
-    sentences = storygen.getSentencesFromBook(book_title)
-    train_pairs, test_pairs = storygen.getPairs(sentences)
+    sentences = storygen.get_sentences(book_title)
+    train_pairs, test_pairs = storygen.get_pairs(book_title, 0.8)
     pairs = train_pairs + test_pairs
-    input_book, output_book = storygen.getBooks(book_title, train_pairs, test_pairs)
+    input_book, output_book = storygen.get_books(book_title, train_pairs, test_pairs)
 
     ## Code lifted from story_generation.py's main method ##
     epoch_size = 25
