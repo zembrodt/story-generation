@@ -1,1 +1,1 @@
-__all__ = ['book', 'encoder', 'decoder']
+__all__ = ['book', 'encoder', 'decoder', 'seq2seq']

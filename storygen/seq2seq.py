@@ -7,15 +7,19 @@ import os
 import operator
 from pathlib import Path
 
+import pymeteor.pymeteor as pymeteor
+
 import torch
 import torch.nn as nn
 from torch import optim
-import torch.nn.functional as F
 
 from nltk.translate.bleu_score import sentence_bleu
 
-from storygen import *
-import pymeteor.pymeteor.pymeteor as pymeteor
+from storygen import book
+from storygen.book import START_ID
+from storygen.book import STOP_ID
+from storygen import encoder
+from storygen import decoder
 
 ## HELPER FUNCTIONS ##
 # Converts a sentence into a list of indexes
@@ -29,7 +33,7 @@ def tensorFromIndex(index, device):
 # Converts a sentence to a pytorch tensor
 def tensorFromSentence(book, sentence, device):
     indexes = indexesFromSentence(book, sentence)
-    indexes.append(book.STOP_ID)
+    indexes.append(STOP_ID)
     return torch.tensor(indexes, dtype=torch.long, device=device).view(-1, 1)
 
 # Converts a pair of sentences into a pair of pytorch tensors
@@ -164,7 +168,7 @@ class Seq2Seq:
                 input_tensor[ei], encoder_hidden)
             encoder_outputs[ei] = encoder_output[0, 0]
 
-        decoder_input = torch.tensor([[book.START_ID]], device=self.device)
+        decoder_input = torch.tensor([[START_ID]], device=self.device)
 
         decoder_hidden = encoder_hidden
 
@@ -187,7 +191,7 @@ class Seq2Seq:
                 decoder_input = topi.squeeze().detach()  # detach from history as input
 
                 loss += self.criterion(decoder_output, target_tensor[di])
-                if decoder_input.item() == book.STOP_ID:
+                if decoder_input.item() == STOP_ID:
                     break
 
         loss.backward()
@@ -300,7 +304,7 @@ class Seq2Seq:
                 encoder_output, encoder_hidden = self.encoder(input_tensor[ei], encoder_hidden)
                 encoder_outputs[ei] += encoder_output[0, 0]
 
-            decoder_input = torch.tensor([[book.START_ID]], device=self.device)  # SOL
+            decoder_input = torch.tensor([[START_ID]], device=self.device)  # SOL
 
             decoder_hidden = encoder_hidden
 
@@ -325,7 +329,7 @@ class Seq2Seq:
                         for i in range(k):
                             new_result = result.add_result(BeamSearchResult(topv.squeeze()[i].item(), topi.squeeze()[i].detach(), decoder_hidden))
                             # If the next generated word is EOL, stop the sentence
-                            if topi.squeeze()[i].item() == book.STOP_ID:
+                            if topi.squeeze()[i].item() == STOP_ID:
                                 new_result.stopped = True
                             else:
                                 new_result.words.append(self.output_book.index2word[topi.squeeze()[i].item()])
@@ -354,7 +358,7 @@ class Seq2Seq:
                 encoder_output, encoder_hidden = self.encoder(input_tensor[ei], encoder_hidden)
                 encoder_outputs[ei] += encoder_output[0, 0]
 
-            decoder_input = torch.tensor([[book.START_ID]], device=self.device)  # SOL
+            decoder_input = torch.tensor([[START_ID]], device=self.device)  # SOL
 
             decoder_hidden = encoder_hidden
 
@@ -381,7 +385,7 @@ class Seq2Seq:
                 # The index in this tensor is the index of the word in the book
                 summation += decoder_output.data.squeeze()[evaluate_item].item()
                 
-                if evaluate_item == book.STOP_ID:
+                if evaluate_item == STOP_ID:
                     break
                 else:
                     # Decode the predicted word from the book 
@@ -389,7 +393,7 @@ class Seq2Seq:
 
                 decoder_input = tensorFromIndex(evaluate_item, self.device)
 
-            perplexity = pow(math.e, -summation / N)# / N because the evaluate sentence is converted to a tensor where the last item will be book.STOP_ID
+            perplexity = pow(math.e, -summation / N)# / N because the evaluate sentence is converted to a tensor where the last item will be STOP_ID
 
             # note: decoder_attentions not properly set up in this function
 
@@ -408,7 +412,7 @@ class Seq2Seq:
                 encoder_output, encoder_hidden = self.encoder(input_tensor[ei], encoder_hidden)
                 encoder_outputs[ei] += encoder_output[0, 0]
 
-            decoder_input = torch.tensor([[book.START_ID]], device=self.device)  # SOL
+            decoder_input = torch.tensor([[START_ID]], device=self.device)  # SOL
 
             decoder_hidden = encoder_hidden
 
@@ -431,7 +435,7 @@ class Seq2Seq:
                 ## Perplexity code ##
                 summation += topv.item()
                 
-                if topi.item() == book.STOP_ID:
+                if topi.item() == STOP_ID:
                     #decoded_words.append('<EOL>')
                     break
                 else:
