@@ -23,26 +23,58 @@ def main():
         network.saveToFiles(encoder_filename, decoder_filename)
 
     # Actual book sentences
-    actual_sentences_score = 0.0
+    actual_sentences_score_train = 0.0
+    actual_sentences_score_test = 0.0
 
     # Random words
-    random_words_score = 0.0
+    random_words_score_train = 0.0
+    random_words_score_test = 0.0
     words = list(input_book.word2index)
     
-    for pair in pairs:
-        #_,_, perplexity = network._evaluate_specified(sentence, sentence)
-        _,_, perplexity = network._evaluate_specified(pair[0], pair[1])
-        actual_sentences_score += perplexity
-
-        random_sentence = ' '.join([random.choice(words) for i in range(len(pair[1].split()))])
-        _,_, perplexity = network._evaluate_specified(pair[0], random_sentence)
-        random_words_score += perplexity
+    # Random sentences
+    random_sentences_score_train = 0.0
+    random_sentences_score_test = 0.0
     
-    actual_sentences_score /= len(sentences)
-    print('Actual sentences score: %.4f'%actual_sentences_score)
+    # Calculate scores on training data
+    for train_pair in train_pairs:
+        perplexity = network._evaluate_specified(train_pair[0], train_pair[1])
+        actual_sentences_score_train += perplexity
 
-    random_words_score /= len(sentences)
-    print('Random words score: %.4f'%random_words_score)
+        random_sentence = ' '.join([random.choice(words) for i in range(len(train_pair[1].split()))])
+        perplexity = network._evaluate_specified(train_pair[0], random_sentence)
+        random_words_score_train += perplexity
+        
+        random_sentence = random.choice(random.choice(train_pairs))
+        perplexity = network._evaluate_specified(train_pair[0], random_sentence)
+        random_sentences_score_train += perplexity
+        
+    # Calculate scores on testing data
+    for test_pair in test_pairs:
+        perplexity = network._evaluate_specified(test_pair[0], test_pair[1])
+        actual_sentences_score_test += perplexity
+
+        random_sentence = ' '.join([random.choice(words) for i in range(len(test_pair[1].split()))])
+        perplexity = network._evaluate_specified(test_pair[0], random_sentence)
+        random_words_score_test += perplexity
+        
+        random_sentence = random.choice(random.choice(test_pairs))
+        perplexity = network._evaluate_specified(test_pair[0], random_sentence)
+        random_sentences_score_test += perplexity
+    
+    actual_sentences_score_train /= len(train_pairs)
+    actual_sentences_score_test /= len(test_pairs)
+    print('Actual sentences score (train): {:.4f}'.format(actual_sentences_score_train))
+    print('Actual sentences score (test): {:.4f}'.format(actual_sentences_score_test))
+
+    random_words_score_train /= len(train_pairs)
+    random_words_score_test /= len(test_pairs)
+    print('Random words score (train): {:.4f}'.format(random_words_score_train))
+    print('Random words score (test): {:.4f}'.format(random_words_score_test))
+    
+    random_sentences_score_train /= len(train_pairs)
+    random_sentences_score_test /= len(test_pairs)
+    print('Random sentences score (train): {:.4f}'.format(random_sentences_score_train))
+    print('Random sentences score (test): {:.4f}'.format(random_sentences_score_test))
     
     # Sentence segments (n-grams)
     n_gram_lengths = [1,2,3,4,6,8,12]
@@ -60,7 +92,7 @@ def main():
             if len(n_gram_sentence) >= n_gram:
                 for i in range(int(len(n_gram_sentence)/n_gram)):
                     n_gram_sentence[n_gram*i:n_gram*(i+1)] = random.choice(n_grams)
-                    _,_, perplexity = network._evaluate_specified(sentence, ' '.join(n_gram_sentence))
+                    perplexity = network._evaluate_specified(sentence, ' '.join(n_gram_sentence))
                     n_gram_score += perplexity
             else:
                 incorrect_lengths += 1
