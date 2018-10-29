@@ -27,10 +27,10 @@ import torch.nn.functional as F
 # while shorter sentences will only use the first few.
 
 class DecoderRNN(nn.Module):
-    def __init__(self, hidden_size, output_size, max_length, dropout_p=0.1):
+    def __init__(self, output_size, hidden_size, max_length, dropout_p=0.1):
         super(DecoderRNN, self).__init__()
-        self.hidden_size = hidden_size
         self.output_size = output_size
+        self.hidden_size = hidden_size
         self.dropout_p = dropout_p
         self.max_length = max_length
 
