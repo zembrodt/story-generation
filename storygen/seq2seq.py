@@ -14,12 +14,15 @@ import torch.nn as nn
 from torch import optim
 
 from nltk.translate.bleu_score import sentence_bleu
+import numpy as np
 
 from storygen import book
 from storygen.book import START_ID
 from storygen.book import STOP_ID
 from storygen import encoder
 from storygen import decoder
+from storygen import glove
+from tensorflow.python.ops.distributions.util import dimension_size
 
 ## HELPER FUNCTIONS ##
 # Converts a sentence into a list of indexes
@@ -37,9 +40,9 @@ def tensorFromSentence(book, sentence, device):
     return torch.tensor(indexes, dtype=torch.long, device=device).view(-1, 1)
 
 # Converts a pair of sentences into a pair of pytorch tensors
-def tensorsFromPair(pair, input_book, output_book, device):
-    input_tensor = tensorFromSentence(input_book, pair[0], device)
-    target_tensor = tensorFromSentence(output_book, pair[1], device)
+def tensorsFromPair(pair, book, device):
+    input_tensor = tensorFromSentence(book, pair[0], device)
+    target_tensor = tensorFromSentence(book, pair[1], device)
     return (input_tensor, target_tensor)
 
     # Calculates the BLEU score
@@ -105,11 +108,10 @@ class BeamSearchResult:
 
 # Represents a Sequence to Sequence network made up of an encoder RNN and decoder RNN with attention weights
 class Seq2Seq:
-    def __init__(self, input_book, output_book, max_length, hidden_size, device):
+    def __init__(self, book, max_length, hidden_size, device):
         self.encoder = None
         self.decoder = None
-        self.input_book = input_book
-        self.output_book = output_book
+        self.book = book
         self.max_length = max_length
         self.hidden_size = hidden_size
         self.device = device
@@ -130,10 +132,10 @@ class Seq2Seq:
 
         if encoder_file.is_file() and decoder_file.is_file():
             print("Loading encoder and decoder from files...")
-            self.encoder = encoder.EncoderRNN(self.input_book.n_words, self.hidden_size).to(self.device)
+            self.encoder = encoder.EncoderRNN(self.book.n_words, self.hidden_size).to(self.device)
             self.encoder.load_state_dict(torch.load(encoder_file, map_location=self.device))
             
-            self.decoder = decoder.DecoderRNN(self.hidden_size, self.output_book.n_words, self.max_length).to(self.device)
+            self.decoder = decoder.DecoderRNN(self.book.n_words, self.hidden_size, self.max_length).to(self.device)
             self.decoder.load_state_dict(torch.load(decoder_file, map_location=self.device))
 
             return True
@@ -211,11 +213,33 @@ class Seq2Seq:
     #
     # Then we call "train" many times and occasionally print the progress (%
     # of examples, time so far, estimated time) and average loss.
-    def trainIters(self, train_pairs, epochs, print_every=1000, learning_rate=0.01):
-                # If we didn't load the encoder/decoder from files, create new ones to train
+    def train_model(self, train_pairs, epochs, use_glove_embeddings=False, print_every=1000, learning_rate=0.01):
+        # If we didn't load the encoder/decoder from files, create new ones to train
         if self.encoder is None or self.decoder is None:
-            self.encoder = encoder.EncoderRNN(self.input_book.n_words, self.hidden_size).to(self.device)
-            self.decoder = decoder.DecoderRNN(self.hidden_size, self.output_book.n_words, self.max_length).to(self.device)
+            self.encoder = encoder.EncoderRNN(self.book.n_words, self.hidden_size).to(self.device)
+            self.decoder = decoder.DecoderRNN(self.book.n_words, self.hidden_size, self.max_length).to(self.device)
+
+        # Create the GloVe embedding's weight matrix:
+        if use_glove_embeddings:
+            # Generates a dict of a word to its GloVe vector
+            words2vec = glove.generate_glove(dimension_size=self.hidden_size)
+            # Create weight matrix:
+            weights_matrix = np.zeros((self.book.n_words, self.hidden_size))
+            words_found = 0
+            for word in self.book.word2index:
+                idx = self.book.word2index[word]
+                try:
+                    weights_matrix[idx] = words2vec[word]
+                    words_found += 1
+                except KeyError:
+                    # Create random vector of dimension 'hidden_size', scale=0.6 taken from tutorial
+                    weights_matrix[idx] = np.random.normal(scale=0.6, size=(self.hidden_size, ))
+            # Convert weights_matrix to a Tensor
+            weights_matrix = torch.tensor(weights_matrix, device=self.device)
+            print('We found {}/{} words in our GloVe words2vec dict!'.format(words_found, self.book.n_words))
+            # Set the embedding layer's state_dict for encoder and decoder
+            self.encoder.embedding.load_state_dict({'weight': weights_matrix})
+            self.decoder.embedding.load_state_dict({'weight': weights_matrix})
 
         start = time.time()
         print_loss_total = 0  # Reset every print_every
@@ -223,7 +247,7 @@ class Seq2Seq:
         self.encoder_optimizer = optim.SGD(self.encoder.parameters(), lr=learning_rate)
         self.decoder_optimizer = optim.SGD(self.decoder.parameters(), lr=learning_rate)
         
-        training_pairs = [tensorsFromPair(train_pair, self.input_book, self.output_book, self.device) for train_pair in train_pairs]
+        training_pairs = [tensorsFromPair(train_pair, self.book, self.device) for train_pair in train_pairs]
         random.shuffle(training_pairs)
         
         self.criterion = nn.NLLLoss()
@@ -293,7 +317,7 @@ class Seq2Seq:
         # Performs beam search on the data to find better scoring sentences (evaluate uses a "beam search" of k=1)
     def beam_search(self, sentence, k):
         with torch.no_grad():
-            input_tensor = tensorFromSentence(self.input_book, sentence, self.device)
+            input_tensor = tensorFromSentence(self.book, sentence, self.device)
                 
             input_length = input_tensor.size()[0]
             encoder_hidden = self.encoder.initHidden(self.device)
@@ -332,7 +356,7 @@ class Seq2Seq:
                             if topi.squeeze()[i].item() == STOP_ID:
                                 new_result.stopped = True
                             else:
-                                new_result.words.append(self.output_book.index2word[topi.squeeze()[i].item()])
+                                new_result.words.append(self.book.index2word[topi.squeeze()[i].item()])
                             new_results.append(new_result)
                     else: # make sure to re-add currently stopped sentences
                         new_results.append(result)
@@ -348,7 +372,7 @@ class Seq2Seq:
     # Forces the model to generate the 'sentence_to_evaluate' and records its perplexity per word
     def _evaluate_specified(self, sentence, sentence_to_evaluate):
         with torch.no_grad():
-            input_tensor = tensorFromSentence(self.input_book, sentence, self.device)
+            input_tensor = tensorFromSentence(self.book, sentence, self.device)
                 
             input_length = input_tensor.size()[0]
             encoder_hidden = self.encoder.initHidden(self.device)
@@ -369,7 +393,7 @@ class Seq2Seq:
             summation = 0.0
             N = 0
 
-            evaluate_tensor = tensorFromSentence(self.input_book, sentence_to_evaluate, self.device)
+            evaluate_tensor = tensorFromSentence(self.book, sentence_to_evaluate, self.device)
 
             evaluate_items = [t.item() for t in evaluate_tensor.squeeze()]
             for evaluate_item in evaluate_items:
@@ -390,7 +414,7 @@ class Seq2Seq:
                     break
                 else:
                     # Decode the predicted word from the book 
-                    decoded_words.append(self.output_book.index2word[topi.item()])
+                    decoded_words.append(self.book.index2word[topi.item()])
 
                 decoder_input = tensorFromIndex(evaluate_item, self.device)
 
@@ -403,7 +427,7 @@ class Seq2Seq:
 
     def evaluate(self, sentence):
         with torch.no_grad():
-            input_tensor = tensorFromSentence(self.input_book, sentence, self.device)
+            input_tensor = tensorFromSentence(self.book, sentence, self.device)
                 
             input_length = input_tensor.size()[0]
             encoder_hidden = self.encoder.initHidden(self.device)
@@ -421,11 +445,7 @@ class Seq2Seq:
             decoded_words = []
             decoder_attentions = torch.zeros(self.max_length, self.max_length)
 
-            #summation = 0.0
-            #N = 0
-
             for di in range(self.max_length):
-                #N += 1
                 decoder_output, decoder_hidden, decoder_attention = self.decoder(
                     decoder_input, decoder_hidden, encoder_outputs)
                 decoder_attentions[di] = decoder_attention.data
@@ -434,21 +454,14 @@ class Seq2Seq:
                 # force the program to generate a sentence and record the probability of doing so
                 topv, topi = decoder_output.data.topk(1)
 
-                ## Perplexity code ##
-                #summation += topv.item()
-                
                 if topi.item() == STOP_ID:
                     #decoded_words.append('<EOL>')
                     break
                 else:
                     # Decode the predicted word from the book 
-                    decoded_words.append(self.output_book.index2word[topi.item()])
+                    decoded_words.append(self.book.index2word[topi.item()])
 
                 decoder_input = topi.squeeze().detach()
-
-            ## More code for perplexity ##
-            #perplexity = math.pow(math.e, -summation / N)
-            ##
 
             return decoded_words, decoder_attentions[:di + 1]
     
