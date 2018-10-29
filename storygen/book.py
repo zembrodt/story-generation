@@ -8,6 +8,15 @@ START_TOKEN = '<START>'
 STOP_ID = 1
 STOP_TOKEN = '<STOP>'
 
+CONTRACTION_PAIRS = [
+    ('\'ll', ' \'ll'),
+    ('\'s', ' \'s'),
+    ('\'d', ' \'d'),
+    ('\'m', ' \'m'),
+    ('\'ve', ' \'ve'),
+    ('s\'', 's \'')
+]
+
 ## Classes ##
 class Book:
     def __init__(self, name):
@@ -135,13 +144,17 @@ def convertLinesToSentences(lines, contraction_dict):
             else:
                 currSentence.append(word)
 
-    # Final pass of all sentence to unconstruct all contractions
+    # Final pass of all sentence to deconstruct all contractions
     for i, sentence in enumerate(sentences):
-        if "'" in sentence:
+        if '\'' in sentence:
             sentenceSplit = sentence.split(' ')
             for j, word in enumerate(sentenceSplit):
-                if "'" in word:
-                    convertedWords = contraction_dict.convert(word).split()
+                if '\'' in word:
+                    convertedWords = contraction_dict.convert(word)
+                    # Check if we can expand out any contractions in the words
+                    for contraction_pair in CONTRACTION_PAIRS:
+                        convertedWords = convertedWords.replace(contraction_pair[0], contraction_pair[1])
+                    convertedWords = convertedWords.split()
                     sentenceSplit[j] = convertedWords[0]
                     for k, convertedWord in enumerate(convertedWords[1:]):
                         sentenceSplit.insert(j+k+1, convertedWord)
