@@ -22,7 +22,6 @@ from storygen.book import STOP_ID
 from storygen import encoder
 from storygen import decoder
 from storygen import glove
-from tensorflow.python.ops.distributions.util import dimension_size
 
 ## HELPER FUNCTIONS ##
 # Converts a sentence into a list of indexes
@@ -222,7 +221,7 @@ class Seq2Seq:
         # Create the GloVe embedding's weight matrix:
         if use_glove_embeddings:
             # Generates a dict of a word to its GloVe vector
-            words2vec = glove.generate_glove(dimension_size=self.hidden_size)
+            words2vec = glove.generate_glove(dim_size=self.hidden_size)
             # Create weight matrix:
             weights_matrix = np.zeros((self.book.n_words, self.hidden_size))
             words_found = 0
