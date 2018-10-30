@@ -22,6 +22,7 @@ from storygen.book import STOP_ID
 from storygen import encoder
 from storygen import decoder
 from storygen import glove
+from storygen import log
 
 ## HELPER FUNCTIONS ##
 # Converts a sentence into a list of indexes
@@ -117,7 +118,7 @@ class Seq2Seq:
         self.encoder_optimizer = None
         self.decoder_optimizer = None
         self.criterion = None
-
+        self.log = log.Log()
         #for testing
         self.i = 0
 
@@ -141,6 +142,7 @@ class Seq2Seq:
         return False
 
     def saveToFiles(self, encoder_filename, decoder_filename):
+        logfile = self.log.create('seq2seq-savetofiles')
         # Check that the path for both files exists
         os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
         os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
@@ -148,8 +150,10 @@ class Seq2Seq:
         encoder_file = Path(encoder_filename)
         decoder_file = Path(decoder_filename)
 
+        self.log.info(logfile, 'Saving encoder and decoder state_dicts.\n')
         torch.save(self.encoder.state_dict(), encoder_file)
         torch.save(self.decoder.state_dict(), decoder_file)
+        self.log.info(logfile, 'Encoder/decoder saved.\n')
     
     def _train(self, input_tensor, target_tensor, teacher_forcing_ratio=0.5):
         encoder_hidden = self.encoder.initHidden(self.device)
@@ -213,6 +217,7 @@ class Seq2Seq:
     # Then we call "train" many times and occasionally print the progress (%
     # of examples, time so far, estimated time) and average loss.
     def train_model(self, train_pairs, epochs, use_glove_embeddings=False, print_every=1000, learning_rate=0.01):
+        logfile = self.log.create('seq2seq-train-model')
         # If we didn't load the encoder/decoder from files, create new ones to train
         if self.encoder is None or self.decoder is None:
             self.encoder = encoder.EncoderRNN(self.book.n_words, self.hidden_size).to(self.device)
@@ -236,9 +241,11 @@ class Seq2Seq:
             # Convert weights_matrix to a Tensor
             weights_matrix = torch.tensor(weights_matrix, device=self.device)
             print('We found {}/{} words in our GloVe words2vec dict!'.format(words_found, self.book.n_words))
+            self.log.info(logfile, 'Found {}/{} words in the GloVe dict.\n'.format(words_found, self.book.n_words))
             # Set the embedding layer's state_dict for encoder and decoder
             self.encoder.embedding.load_state_dict({'weight': weights_matrix})
             self.decoder.embedding.load_state_dict({'weight': weights_matrix})
+            self.log.info(logfile, 'Created encoder and decoder embeddings\n')
 
         start = time.time()
         print_loss_total = 0  # Reset every print_every
@@ -254,6 +261,7 @@ class Seq2Seq:
         # Iterate through the training set over a set amount of epochs
         # Output the progress and current loss value
         for i in range(epochs):
+            self.log.debug(logfile, 'Processing epoch {}\n'.format(i+1))
             for j, pair in enumerate(training_pairs):
                 input_tensor = pair[0]
                 target_tensor = pair[1]
@@ -268,7 +276,7 @@ class Seq2Seq:
                     if progress_percent > 0:
                         t = timeSince(start, progress_percent)
                     print('{} ({} {:.2f}%) {:.4f}'.format(t, (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
-        
+        self.log.info(logfile, 'Finished training on data for {} epochs.\n'.format(epochs))
     ######################################################################
     # Evaluation
     # ==========
