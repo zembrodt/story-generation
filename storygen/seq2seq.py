@@ -24,6 +24,10 @@ from storygen import decoder
 from storygen import glove
 from storygen import log
 
+# TODO: Temp, make these globals?
+ENCODER_FILE_FORMAT = 'obj/encoder_{}_{}.torch'
+DECODER_FILE_FORMAT = 'obj/decoder_{}_{}.torch'
+
 ## HELPER FUNCTIONS ##
 # Converts a sentence into a list of indexes
 def indexesFromSentence(book, sentence):
@@ -216,7 +220,7 @@ class Seq2Seq:
     #
     # Then we call "train" many times and occasionally print the progress (%
     # of examples, time so far, estimated time) and average loss.
-    def train_model(self, train_pairs, epochs, use_glove_embeddings=False, print_every=1000, learning_rate=0.01):
+    def train_model(self, train_pairs, epochs, use_glove_embeddings=False, save_temp_models=False, print_every=1000, learning_rate=0.01):
         logfile = self.log.create('seq2seq-train-model')
         # If we didn't load the encoder/decoder from files, create new ones to train
         if self.encoder is None or self.decoder is None:
@@ -261,7 +265,29 @@ class Seq2Seq:
         # Iterate through the training set over a set amount of epochs
         # Output the progress and current loss value
         for i in range(epochs):
-            self.log.debug(logfile, 'Processing epoch {}\n'.format(i+1))
+            # Save a temporary model
+            if save_temp_models:
+                encoder_filename = ENCODER_FILE_FORMAT.format(i, self.hidden_size)
+                decoder_filename = DECODER_FILE_FORMAT.format(i, self.hidden_size)
+                encoder_file = Path(encoder_filename)
+                decoder_file = Path(decoder_filename)
+                # Save model at current epoch if doesn't exist
+                if not encoder_file.is_file() or not decoder_file.is_file():
+                    self.log.debug(logfile, 'Saving temporary model at epoch={}, dimension={}'.format(i, self.hidden_size))
+                    self.saveToFiles(encoder_filename, decoder_filename)
+                # Delete second previous model if not a multiple of 10
+                if i > 1 and (i-2) % 10 != 0:
+                    # Delete model with epoch = i-2
+                    encoder_file = Path(ENCODER_FILE_FORMAT.format(i-2, self.hidden_size))
+                    decoder_file = Path(DECODER_FILE_FORMAT.format(i-2, self.hidden_size))
+                    if encoder_file.is_file() and decoder_file.is_file():
+                        encoder_file.unlink()
+                        decoder_file.unlink()
+                        self.log.debug(logfile, 'Deleted temporary model at epoch={}, dimension={}'.format(i-2, self.hidden_size))
+                    else:
+                        self.log.error(logfile, 'Could not find temporary model at epoch={}, dimension={}'.format(i-2, self.hidden_size))
+                    
+            self.log.debug(logfile, 'Processing epoch {}\n'.format(i))
             for j, pair in enumerate(training_pairs):
                 input_tensor = pair[0]
                 target_tensor = pair[1]

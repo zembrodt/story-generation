@@ -140,7 +140,7 @@ def main():
 		#network = seq2seq.Seq2Seq(input_book, output_book, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
 		network = seq2seq.Seq2Seq(book, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
 		if not network.loadFromFiles(encoder_filename, decoder_filename):
-			network.train_model(train_pairs, epoch_size, use_glove_embeddings=True)
+			network.train_model(train_pairs, epoch_size, use_glove_embeddings=True, save_temp_models=True)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
 		perplexity_score, bleu_score, meteor_score, beam_bleu_score, beam_meteor_score = network.evaluate_test_set(test_pairs)
