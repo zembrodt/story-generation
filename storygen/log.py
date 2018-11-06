@@ -21,16 +21,17 @@ class Log:
             f.write('Log file created at {}\n'.format(t))
         self.logfiles.append(logfile)
         return logfile
-    def _write(self, logfile, tag, content):
+    def _write(self, logfile, tag, content, newline):
+        nl = '\n' if newline else ''
         if logfile in self.logfiles:
             t = datetime.datetime.now()
             with open(logfile, 'a') as f:
-                f.write(('{:<'+str(PADDING)+'} {} : {}').format(tag, t, content))
+                f.write(('{:<'+str(PADDING)+'} {} : {}{}').format(tag, t, content, nl))
         else:
             print('Logfile [{}] doesn\'t exist'.format(logfile))
-    def info(self, logfile, content):
-        self._write(logfile, LOG_TAGS[0], content)
-    def debug(self, logfile, content):
-        self._write(logfile, LOG_TAGS[1], content)
-    def error(self, logfile, content):
-        self._write(logfile, LOG_TAGS[2], content)
+    def info(self, logfile, content, newline=True):
+        self._write(logfile, LOG_TAGS[0], content, newline)
+    def debug(self, logfile, content, newline=True):
+        self._write(logfile, LOG_TAGS[1], content, newline)
+    def error(self, logfile, content, newline=True):
+        self._write(logfile, LOG_TAGS[2], content, newline)
