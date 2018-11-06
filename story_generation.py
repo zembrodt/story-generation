@@ -1,31 +1,26 @@
 # story_generation.py
 
-from __future__ import unicode_literals, print_function, division
 from io import open
 from pathlib import Path
 
-import collections
 import random
-import re
-import string
-import unicodedata
-
-import nltk
-import pymeteor.pymeteor as pymeteor
 import torch
 
 from storygen import *
 
 #Consts
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-MAX_LENGTH = 1024
-HIDDEN_SIZE = glove.DIMENSION_SIZES[-1] #256
+MAX_LENGTH = None
+HIDDEN_SIZE = 256
+EMBEDDING_SIZE = glove.DIMENSION_SIZES[-1]
 # Filename format: obj/{encoder or decoder}_{epoch-size}_{hidden-size}.torch
 ENCODER_FILE_FORMAT = 'obj/encoder_{}_{}.torch'
 DECODER_FILE_FORMAT = 'obj/decoder_{}_{}.torch'
-TRAIN_TEST_DATA_FILE_FORMAT = 'data/%s_%d_%s.txt'
+DATA_FILE_FORMAT = 'data/{}_{}_{}.txt'
 
 def get_sentences(book_title):
+	global MAX_LENGTH # We set MAX_LENGTH to the longest sentence within the book
+	
 	lines = open('data/%s.txt' % book_title, encoding='utf-8').read().strip().split('\n')
 	lines = [book.normalizeString(line) for line in lines if len(line) > 0]
 	with open('data/contractions_dictionary.txt', 'r') as f:
@@ -33,6 +28,12 @@ def get_sentences(book_title):
 		contractions = eval(s)
 	contraction_dict = book.ContractionDict(contractions)
 	sentences = book.convertLinesToSentences(lines, contraction_dict)
+	
+	# Set MAX_LENGTH const:
+	sentences_split = [sentence.split() for sentence in sentences]
+	MAX_LENGTH = max(map(len, sentences_split))
+	print('max sentence len={}'.format(MAX_LENGTH))
+	
 	return sentences
 		
 # Read all the lines from a book and convert them to an array of sentences
@@ -41,8 +42,8 @@ def get_pairs(book_title, percentage):
 	train_pairs = None
 	test_pairs = None
 	# Check if the train/test data exists for the given book with the given percentage
-	train_file = Path(TRAIN_TEST_DATA_FILE_FORMAT % (book_title, int(percentage*100), 'train'))
-	test_file = Path(TRAIN_TEST_DATA_FILE_FORMAT % (book_title, int(percentage*100), 'test'))
+	train_file = Path(DATA_FILE_FORMAT.format(book_title, int(percentage*100), 'train'))
+	test_file = Path(DATA_FILE_FORMAT.format(book_title, int(percentage*100), 'test'))
 	if train_file.is_file() and test_file.is_file():
 		print('Reading from file')
 		# Read train/test data from the files
@@ -84,8 +85,9 @@ def get_pairs(book_title, percentage):
 			else:
 				f.write('%s'%item)
 		f.close()
-	print('len(train/test)=%d, %d'%(len(train_pairs), len(test_pairs)))
-	print('train[0]=%s\ntest[0]=%s'%(str(train_pairs[0]), str(test_pairs[0])))
+	
+	print('len(train/test)={}, {}'.format(len(train_pairs), len(test_pairs)))
+	print('train[0]={}\ntest[0]={}'.format(train_pairs[0], test_pairs[0]))
 	return train_pairs, test_pairs
 
 def get_book(book_title, train_pairs, test_pairs):
@@ -122,23 +124,31 @@ def createStory(input_sentence, input_book, output_book, encoder, decoder):
 """
 
 def main():
+	global MAX_LENGTH
 	print('Hidden layer size: {}'.format(HIDDEN_SIZE))
 
 	book_title = '1_sorcerers_stone'
 	
 	train_pairs, test_pairs = get_pairs(book_title, 0.8)
         
+        
+	# Check that we set MAX_LENGTH:
+	if MAX_LENGTH is None:
+		MAX_LENGTH = max(
+			max(map(len, [sentence.split() for pair in train_pairs for sentence in pair])),
+			max(map(len, [sentence.split() for pair in test_pairs for sentence in pair])))
+    
 	#input_book, output_book = get_books(book_title, train_pairs, test_pairs)
 	book = get_book(book_title, train_pairs, test_pairs)
 	
-	epoch_sizes = [25]#[100, 200, 400, 600]
+	epoch_sizes = [2]#[100, 200, 400, 600]
 	for epoch_size in epoch_sizes:
 		print('Epoch size: {}'.format(epoch_size))
 		encoder_filename = ENCODER_FILE_FORMAT.format(epoch_size, HIDDEN_SIZE)
 		decoder_filename = DECODER_FILE_FORMAT.format(epoch_size, HIDDEN_SIZE)
 
 		#network = seq2seq.Seq2Seq(input_book, output_book, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
-		network = seq2seq.Seq2Seq(book, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
+		network = seq2seq.Seq2Seq(book, MAX_LENGTH, HIDDEN_SIZE, EMBEDDING_SIZE, DEVICE)
 		if not network.loadFromFiles(encoder_filename, decoder_filename):
 			network.train_model(train_pairs, epoch_size, use_glove_embeddings=True, save_temp_models=True)
 			network.saveToFiles(encoder_filename, decoder_filename)
