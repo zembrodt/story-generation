@@ -27,18 +27,22 @@ import torch.nn.functional as F
 # while shorter sentences will only use the first few.
 
 class DecoderRNN(nn.Module):
-    def __init__(self, output_size, hidden_size, max_length, dropout_p=0.1):
+    def __init__(self, output_size, hidden_size, embedding_size, max_length, dropout_p=0.1):
+        print('decoder, max_len={}'.format(max_length))
         super(DecoderRNN, self).__init__()
         self.output_size = output_size
         self.hidden_size = hidden_size
+        self.embedding_size = embedding_size
         self.dropout_p = dropout_p
         self.max_length = max_length
 
-        self.embedding = nn.Embedding(self.output_size, self.hidden_size)
-        self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
-        self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
+        self.embedding = nn.Embedding(self.output_size, self.embedding_size)
+        #self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
+        self.attn = nn.Linear(self.hidden_size + self.embedding_size, self.max_length)
+        #self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
+        self.attn_combine = nn.Linear(self.hidden_size + self.embedding_size, self.embedding_size)
         self.dropout = nn.Dropout(self.dropout_p)
-        self.gru = nn.GRU(self.hidden_size, self.hidden_size)
+        self.gru = nn.GRU(self.embedding_size, self.hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
     def forward(self, input, hidden, encoder_outputs):
