@@ -10,7 +10,7 @@ PADDING = max(map(len, LOG_TAGS))
 class Log:
     def __init__(self, log_dir=LOG_DIR, file_ext=FILE_EXT):
         t = datetime.datetime.now()
-        self.dir = '{}log_{}{}{}_{}{}{}/'.format(log_dir, t.year, t.month, t.day, t.hour, t.minute, t.second)
+        self.dir = '{}log_{}{:02d}{:02d}_{:02d}{:02d}{:02d}/'.format(log_dir, t.year, t.month, t.day, t.hour, t.minute, t.second)
         self.file_ext = file_ext
         self.logfiles = []
     def create(self, logname):
