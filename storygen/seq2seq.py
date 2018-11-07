@@ -29,9 +29,12 @@ from storygen import decoder
 from storygen import glove
 from storygen import log
 
-# TODO: Temp, make these globals?
-ENCODER_FILE_FORMAT = 'obj/encoder_{}_{}.torch'
-DECODER_FILE_FORMAT = 'obj/decoder_{}_{}.torch'
+# Filename format: obj/{encoder or decoder}_{epoch-size}_{embedding-size}_{hidden-size}_{max-length}.torch
+ENCODER_FILE_FORMAT = 'obj/encoder_{}_{}_{}_{}.torch'
+DECODER_FILE_FORMAT = 'obj/decoder_{}_{}_{}_{}.torch'
+
+LOSS_FILE_FORMAT = '{}loss.dat'
+VALIDATION_LOSS_FILE_FORMAT = '{}validation.dat'
 
 ## HELPER FUNCTIONS ##
 # Converts a sentence into a list of indexes
@@ -297,24 +300,26 @@ class Seq2Seq:
     #
     # Then we call "train" many times and occasionally print the progress (%
     # of examples, time so far, estimated time) and average loss.
-    def train_model(self, train_pairs, epochs, validation_size=0.1, validate_every=10, use_glove_embeddings=False, save_temp_models=False, checkpoint_every=10, print_every=1000, learning_rate=0.01):
+    def train_model(self, train_pairs, epochs, validation_size=0.1, validate_every=10, use_glove_embeddings=False, save_temp_models=False, loss_dir=None, checkpoint_every=50, print_every=1000, learning_rate=0.01):
         logfile = self.log.create('seq2seq-train-model')
 
         # Check if any checkpoints for this model exist:
         encoders = set()
         decoders = set()
-        re_format = '{}_(\d+)_{}.torch'
+        re_format = '{}_(\d+)_{}_{}_{}.torch'
 
         for filename in os.listdir('obj/'):
-            r_enc = re.search(re_format.format('encoder', self.embedding_size), filename)
+            r_enc = re.search(re_format.format('encoder', self.embedding_size, self.hidden_size, self.max_length), filename)
             if r_enc:
                 encoders.add(int(r_enc.group(1)))
             else:
-                r_dec = re.search(re_format.format('decoder', self.embedding_size), filename)
+                r_dec = re.search(re_format.format('decoder', self.embedding_size, self.hidden_size, self.max_length), filename)
                 if r_dec:
                     decoders.add(int(r_dec.group(1)))
         # A checkpoint needs a valid encoder and decoder 
         checkpoints = encoders.intersection(decoders)
+        print('Checkpoints found at: {}'.format(checkpoints))
+        self.log.debug(logfile, 'Checkpoints found at: {}'.format(checkpoints))
         start_epoch = 0
 
         found_max_checkpoint = False
@@ -323,26 +328,64 @@ class Seq2Seq:
                 max_val = max(checkpoints)
                 if max_val < epochs:
                     start_epoch = max_val
+                    print('Found checkpoint at epoch={}'.format(start_epoch))
                     self.log.debug(logfile, 'Found checkpoint at epoch={}'.format(start_epoch))
                     found_max_checkpoint = True
                 else:
                     checkpoints.remove(max_val)
             else:
                 found_max_checkpoint = True # the max is 0 (none exists)
+                print('No checkpoint found')
                 self.log.debug(logfile, 'No checkpoint found')
 
-        # If we didn't load the encoder/decoder from files, create new ones or load checkpoint to train
+        loss_avgs = []
+        validation_loss_avgs = []
+
+        # If we didn't load the encoder/decoder from files: create new ones or load checkpoint to train
         if self.encoder is None or self.decoder is None:
             if start_epoch > 0:
                 # Load the encoder/decoder for the starting epoch checkpoint
-                encoder_filename = ENCODER_FILE_FORMAT.format(start_epoch, self.embedding_size)
-                decoder_filename = DECODER_FILE_FORMAT.format(start_epoch, self.embedding_size)
+                encoder_filename = ENCODER_FILE_FORMAT.format(start_epoch, self.embedding_size, self.hidden_size, self.max_length)
+                decoder_filename = DECODER_FILE_FORMAT.format(start_epoch, self.embedding_size, self.hidden_size, self.max_length)
                 if self.loadFromFiles(encoder_filename, decoder_filename):
                     self.log.info(logfile, 'Loaded encoder/decoder from files at checkpoint {}'.format(start_epoch))
                 else:
                     self.log.error(logfile, 'Tried to load checkpoint encoder/decoder at epoch={}, but it failed!'.format(start_epoch))
                     print('Checkpoint loading error!')
                     exit(1)
+                # Load the loss values from files, if given
+                if loss_dir is not None:
+                    # Add a forward slash to end of directory path
+                    if not loss_dir[-1] == '/':
+                        loss_dir += '/'
+                    self.log.info(logfile, 'Attempting to load loss files from {}'.format(loss_dir))
+                    loss_filename = LOSS_FILE_FORMAT.format(loss_dir)
+                    validation_loss_filename = VALIDATION_LOSS_FILE_FORMAT.format(loss_dir)
+                    # Add (epoch, loss value) pairs to the loss lists
+                    if os.path.isfile(loss_filename):
+                        self.log.debug(logfile, 'Loading loss file: {}'.format(loss_filename))
+                        with open(loss_filename, 'r') as f:
+                            for line in f.readlines(): # should just have one line
+                                for pair in line.split('\t'):
+                                    if len(pair) > 0:
+                                        epoch, value = pair.strip().split(',', 1)
+                                        loss_avgs.append((int(epoch), float(value)))
+                        # Save the values in the new log directory
+                        with open(LOSS_FILE_FORMAT.format(self.log.dir), 'w+') as f:
+                            for item in loss_avgs:
+                                f.write('{},{}\t'.format(item[0], item[1]))
+                    if os.path.isfile(validation_loss_filename):
+                        self.log.debug(logfile, 'Loading validation loss file: {}'.format(validation_loss_filename))
+                        with open(validation_loss_filename, 'r') as f:
+                            for line in f.readlines(): # should just have one line
+                                for pair in line.split('\t'):
+                                    if len(pair) > 0:
+                                        epoch, value = pair.strip().split(',', 1)
+                                        validation_loss_avgs.append((int(epoch), float(value)))
+                        # Save the values in the new log directory
+                        with open(VALIDATION_LOSS_FILE_FORMAT.format(self.log.dir), 'w+') as f:
+                            for item in validation_loss_avgs:
+                                f.write('{},{}\t'.format(item[0], item[1]))
             else:
                 self.encoder = encoder.EncoderRNN(self.book.n_words, self.hidden_size, self.embedding_size).to(self.device)
                 self.decoder = decoder.DecoderRNN(self.book.n_words, self.hidden_size, self.embedding_size, self.max_length).to(self.device)
@@ -373,8 +416,6 @@ class Seq2Seq:
 
         start = time.time()
         print_loss_total = 0  # Reset every print_every
-        loss_avgs = []
-        validation_loss_avgs = []
 
         self.encoder_optimizer = optim.SGD(self.encoder.parameters(), lr=learning_rate)
         self.decoder_optimizer = optim.SGD(self.decoder.parameters(), lr=learning_rate)
@@ -392,45 +433,10 @@ class Seq2Seq:
         random.shuffle(training_pairs) # shuffle the train pairs
         
         self.criterion = nn.NLLLoss()
-        
-        # If we have a start_epoch value, we want to continue on to the next epoch, so increment
-        if start_epoch > 0:
-            start_epoch += 1
 
         # Iterate through the training set over a set amount of epochs
         # Output the progress and current loss value
         for i in range(start_epoch, epochs):
-            # Save a temporary model
-            if save_temp_models:
-                encoder_filename = ENCODER_FILE_FORMAT.format(i, self.embedding_size)
-                decoder_filename = DECODER_FILE_FORMAT.format(i, self.embedding_size)
-                encoder_file = Path(encoder_filename)
-                decoder_file = Path(decoder_filename)
-                # Save model at current epoch if doesn't exist
-                if not encoder_file.is_file() or not decoder_file.is_file():
-                    self.log.debug(logfile, 'Saving temporary model at epoch={}'.format(i))
-                    self.saveToFiles(encoder_filename, decoder_filename)
-                # Delete second previous model if not a multiple of 10
-                if i > 1 and (i-2) % checkpoint_every != 0:
-                    # Delete model with epoch = i-2
-                    encoder_file = Path(ENCODER_FILE_FORMAT.format(i-2, self.embedding_size))
-                    decoder_file = Path(DECODER_FILE_FORMAT.format(i-2, self.embedding_size))
-                    if encoder_file.is_file() and decoder_file.is_file():
-                        encoder_file.unlink()
-                        decoder_file.unlink()
-                        self.log.debug(logfile, 'Deleted temporary model at epoch={}'.format(i-2))
-                    else:
-                        self.log.error(logfile, 'Could not find temporary model at epoch={}'.format(i-2))
-            
-            # Calculate loss on validation set:
-            if i > 0 and i % validate_every == 0:
-                validation_loss_avg = 0
-                for j, pair in enumerate(validation_pairs):
-                    input_tensor = pair[0]
-                    target_tensor = pair[1]
-                    validation_loss_avg += self._calculate_loss(input_tensor, target_tensor)
-                validation_loss_avgs.append((i, float(validation_loss_avg) / len(validation_pairs)))
-                 
             self.log.debug(logfile, 'Processing epoch {}'.format(i))
             loss_avg = 0
             for j, pair in enumerate(training_pairs):
@@ -443,12 +449,53 @@ class Seq2Seq:
                 if j % print_every == 0:
                     print_loss_avg = print_loss_total / print_every
                     print_loss_total = 0
-                    progress_percent = (i*len(training_pairs)+j)/(epochs*len(training_pairs))
+                    progress_percent = ((i-start_epoch)*len(training_pairs)+j)/((epochs-start_epoch)*len(training_pairs))
                     t = -1.0
                     if progress_percent > 0:
                         t = timeSince(start, progress_percent)
-                    print('{} ({} {:.2f}%) {:.4f}'.format(t, (i*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
-            loss_avgs.append((i, float(loss_avg) / len(training_pairs)))
+                    print('{} ({} {:.2f}%) {:.4f}'.format(t, ((i-start_epoch)*len(training_pairs)+j), progress_percent * 100, print_loss_avg))
+
+            # Calculate loss on validation set:
+            if i > 0 and i % validate_every == 0:
+                validation_loss_avg = 0
+                for j, pair in enumerate(validation_pairs):
+                    input_tensor = pair[0]
+                    target_tensor = pair[1]
+                    validation_loss_avg += self._calculate_loss(input_tensor, target_tensor)
+                # Save validation loss value
+                validation_loss_avg /= len(validation_pairs)
+                validation_loss_avgs.append((i, validation_loss_avg))
+                with open(VALIDATION_LOSS_FILE_FORMAT.format(self.log.dir), 'a+') as f:
+                    f.write('{},{}\t'.format(i, validation_loss_avg))
+
+            # Save a checkpoint
+            if save_temp_models:
+                encoder_filename = ENCODER_FILE_FORMAT.format(i+1, self.embedding_size, self.hidden_size, self.max_length)
+                decoder_filename = DECODER_FILE_FORMAT.format(i+1, self.embedding_size, self.hidden_size, self.max_length)
+                encoder_file = Path(encoder_filename)
+                decoder_file = Path(decoder_filename)
+                # Save model at current epoch if doesn't exist
+                if not encoder_file.is_file() or not decoder_file.is_file():
+                    self.log.debug(logfile, 'Saving temporary model at epoch={}'.format(i))
+                    self.saveToFiles(encoder_filename, decoder_filename)
+                # Delete second previous model if not a multiple of 10
+                if i > 1 and (i-1) % checkpoint_every != 0:
+                    # Delete model with epoch = i-1
+                    encoder_file = Path(ENCODER_FILE_FORMAT.format(i-1, self.embedding_size, self.hidden_size, self.max_length))
+                    decoder_file = Path(DECODER_FILE_FORMAT.format(i-1, self.embedding_size, self.hidden_size, self.max_length))
+                    if encoder_file.is_file() and decoder_file.is_file():
+                        encoder_file.unlink()
+                        decoder_file.unlink()
+                        self.log.debug(logfile, 'Deleted temporary model at epoch={}'.format(i-1))
+                    else:
+                        self.log.error(logfile, 'Could not find temporary model at epoch={}'.format(i-1))
+            
+            # Save loss value
+            loss_avg /= len(training_pairs)
+            loss_avgs.append((i, loss_avg))
+            with open(LOSS_FILE_FORMAT.format(self.log.dir), 'a+') as f:
+                    f.write('{},{}\t'.format(i, loss_avg))
+
         # Save the entirety of the loss values
         loss_logfile = self.log.create('train_model-loss_values')
         self.log.debug(loss_logfile, 'Validation loss averages: {}'.format(validation_loss_avgs))
@@ -664,7 +711,7 @@ class Seq2Seq:
         logfile = self.log.create('evaluate_test_set')
 
         print('Printing first {} evaluations:'.format(print_first))
-        self.log.info('Using {}'.format('beam search (k={}'.format(k) if use_beam_search else 'evaluate'))
+        self.log.info(logfile, 'Using {}'.format('beam search (k={})'.format(k) if use_beam_search else 'evaluate'))
         
         perplexity_total = 0.0
         
@@ -707,7 +754,8 @@ class Seq2Seq:
                     beam_empty_sentences += 1
                     continue
                 beam_sentence = ' '.join(beam_result.words)
-                self.log.debug(logfile, '< {}'.format(beam_sentence))
+                if (i+1)%print_every == 0:
+                    self.log.debug(logfile, '< {}'.format(beam_sentence))
                 
                 # Calculate BLEU and METEOR for beam search
                 beam_bleu_score = calculateBleu(beam_sentence, test_pair[1])
@@ -723,7 +771,7 @@ class Seq2Seq:
                     print('\tPerplexity: {:.4f}'.format(perplexity))
                     print('Beam search (k={}):'.format(k))
                     print('< [{}]'.format(beam_sentence))
-                    print('\tSkipped sentences: {}'.format())
+                    print('\tSkipped sentences: {}'.format(beam_empty_sentences))
                     print('\tBLEU:       {:.4f}'.format(beam_bleu_score))
                     print('\tMETEOR:     {:.4f}'.format(beam_meteor_score))
             else:
@@ -735,7 +783,8 @@ class Seq2Seq:
                     empty_sentences += 1
                     continue
                 output_sentence = ' '.join(output_words)
-                self.log.debug(logfile, '< {}'.format(output_sentence))
+                if (i+1)%print_every == 0:
+                    self.log.debug(logfile, '< {}'.format(output_sentence))
                 # Calculate BLEU and METEOR for evaluate
                 bleu_score = calculateBleu(output_sentence, test_pair[1])
                 meteor_score = pymeteor.meteor(output_sentence, test_pair[1])

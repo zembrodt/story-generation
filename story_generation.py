@@ -4,6 +4,7 @@ from io import open
 from pathlib import Path
 
 import random
+import sys
 import torch
 
 from storygen import *
@@ -13,9 +14,6 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 MAX_LENGTH = None
 HIDDEN_SIZE = 256
 EMBEDDING_SIZE = glove.DIMENSION_SIZES[-1]
-# Filename format: obj/{encoder or decoder}_{epoch-size}_{hidden-size}.torch
-ENCODER_FILE_FORMAT = 'obj/encoder_{}_{}.torch'
-DECODER_FILE_FORMAT = 'obj/decoder_{}_{}.torch'
 DATA_FILE_FORMAT = 'data/{}_{}_{}.txt'
 
 def get_sentences(book_title):
@@ -31,7 +29,7 @@ def get_sentences(book_title):
 	
 	# Set MAX_LENGTH const:
 	sentences_split = [sentence.split() for sentence in sentences]
-	MAX_LENGTH = max(map(len, sentences_split))
+	MAX_LENGTH = max(map(len, sentences_split)) + 1
 	print('max sentence len={}'.format(MAX_LENGTH))
 	
 	return sentences
@@ -137,6 +135,7 @@ def main():
 		MAX_LENGTH = max(
 			max(map(len, [sentence.split() for pair in train_pairs for sentence in pair])),
 			max(map(len, [sentence.split() for pair in test_pairs for sentence in pair])))
+		MAX_LENGTH += 1 # for <EOL> token
     
 	#input_book, output_book = get_books(book_title, train_pairs, test_pairs)
 	book = get_book(book_title, train_pairs, test_pairs)
@@ -144,13 +143,16 @@ def main():
 	epoch_sizes = [2]#[100, 200, 400, 600]
 	for epoch_size in epoch_sizes:
 		print('Epoch size: {}'.format(epoch_size))
-		encoder_filename = ENCODER_FILE_FORMAT.format(epoch_size, HIDDEN_SIZE)
-		decoder_filename = DECODER_FILE_FORMAT.format(epoch_size, HIDDEN_SIZE)
+		encoder_filename = seq2seq.ENCODER_FILE_FORMAT.format(epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
+		decoder_filename = seq2seq.DECODER_FILE_FORMAT.format(epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
 
 		#network = seq2seq.Seq2Seq(input_book, output_book, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
 		network = seq2seq.Seq2Seq(book, MAX_LENGTH, HIDDEN_SIZE, EMBEDDING_SIZE, DEVICE)
 		if not network.loadFromFiles(encoder_filename, decoder_filename):
-			network.train_model(train_pairs, epoch_size, use_glove_embeddings=True, save_temp_models=True)
+			loss_dir = None
+			if len(sys.argv) > 1:
+				loss_dir = sys.argv[1]
+			network.train_model(train_pairs, epoch_size, use_glove_embeddings=True, save_temp_models=True, loss_dir=loss_dir)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
 		perplexity_score, bleu_score, meteor_score, beam_bleu_score, beam_meteor_score = network.evaluate_test_set(test_pairs)
