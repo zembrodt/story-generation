@@ -72,7 +72,7 @@ def calculateBleu(candidate, reference, n_gram=2):
 def asMinutes(s):
     m = math.floor(s / 60)
     s -= m * 60
-    return '{}m {}s'.format(m, s)
+    return '{}m {:.2f}s'.format(m, s)
 def timeSince(since, percent):
     now = time.time()
     s = now - since
@@ -503,10 +503,11 @@ class Seq2Seq:
         self.log.info(logfile, 'Finished training on data for {} epochs.'.format(epochs))
         self.log.debug(logfile, 'Average loss={:.4f}'.format(float(sum([item[1] for item in loss_avgs]))/len(loss_avgs)))
         self.log.debug(logfile, 'Average validation loss={:.4f}'.format(float(sum([item[1] for item in validation_loss_avgs])) / len(validation_loss_avgs)))
-        plt.plot([item[0] for item in loss_avgs], [item[1] for item in loss_avgs])
-        plt.plot([item[0] for item in validation_loss_avgs], [item[1] for item in validation_loss_avgs])
-        plt.ylabel('Loss')
+        plt.plot([item[0] for item in loss_avgs], [item[1] for item in loss_avgs], label='Training')
+        plt.plot([item[0] for item in validation_loss_avgs], [item[1] for item in validation_loss_avgs], label='Validation')
+        plt.legend()
         plt.xlabel('Epoch')
+        plt.ylabel('Loss')
         plt.savefig('{}loss_figure.png'.format(self.log.dir)) # Save plot to log folder
         
     ######################################################################
