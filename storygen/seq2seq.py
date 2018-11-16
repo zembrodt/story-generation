@@ -300,7 +300,7 @@ class Seq2Seq:
     #
     # Then we call "train" many times and occasionally print the progress (%
     # of examples, time so far, estimated time) and average loss.
-    def train_model(self, train_pairs, epochs, validation_size=0.1, validate_every=10, use_glove_embeddings=False, save_temp_models=False, loss_dir=None, checkpoint_every=50, print_every=1000, learning_rate=0.01):
+    def train_model(self, train_pairs, epochs, validation_size=0.1, validate_every=10, use_glove_embeddings=False, save_temp_models=False, checkpoint_every=50, loss_dir=None, print_every=1000, learning_rate=0.01):
         logfile = self.log.create('seq2seq-train-model')
 
         # Check if any checkpoints for this model exist:
@@ -364,6 +364,7 @@ class Seq2Seq:
                     # Add (epoch, loss value) pairs to the loss lists
                     if os.path.isfile(loss_filename):
                         self.log.debug(logfile, 'Loading loss file: {}'.format(loss_filename))
+                        print('Loading loss file: {}'.format(loss_filename))
                         with open(loss_filename, 'r') as f:
                             for line in f.readlines(): # should just have one line
                                 for pair in line.split('\t'):
@@ -376,6 +377,7 @@ class Seq2Seq:
                                 f.write('{},{}\t'.format(item[0], item[1]))
                     if os.path.isfile(validation_loss_filename):
                         self.log.debug(logfile, 'Loading validation loss file: {}'.format(validation_loss_filename))
+                        print('Loading validation loss file: {}'.format(validation_loss_filename))
                         with open(validation_loss_filename, 'r') as f:
                             for line in f.readlines(): # should just have one line
                                 for pair in line.split('\t'):
@@ -393,7 +395,8 @@ class Seq2Seq:
         # Create the GloVe embedding's weight matrix:
         if use_glove_embeddings:
             # Generates a dict of a word to its GloVe vector
-            words2vec = glove.generate_glove(dim_size=self.embedding_size)
+            #words2vec = glove.generate_glove(dim_size=self.embedding_size)
+            words2vec = glove.generate_glove(custom=True)
             # Create weight matrix:
             weights_matrix = np.zeros((self.book.n_words, self.embedding_size))
             words_found = 0
@@ -757,10 +760,11 @@ class Seq2Seq:
                 beam_sentence = ' '.join(beam_result.words)
                 if (i+1)%print_every == 0:
                     self.log.debug(logfile, '< {}'.format(beam_sentence))
+                    print('{}: {:.4f}'.format(i, perplexity))
                 
                 # Calculate BLEU and METEOR for beam search
-                beam_bleu_score = calculateBleu(beam_sentence, test_pair[1])
-                beam_meteor_score = pymeteor.meteor(beam_sentence, test_pair[1])
+                beam_bleu_score = 0#calculateBleu(beam_sentence, test_pair[1])
+                beam_meteor_score = 0#pymeteor.meteor(beam_sentence, test_pair[1])
                 # Add to totals
                 beam_bleu_total += beam_bleu_score
                 beam_meteor_total += beam_meteor_score
@@ -786,9 +790,10 @@ class Seq2Seq:
                 output_sentence = ' '.join(output_words)
                 if (i+1)%print_every == 0:
                     self.log.debug(logfile, '< {}'.format(output_sentence))
+                    print('{}: {:.4f}'.format(i, perplexity))
                 # Calculate BLEU and METEOR for evaluate
-                bleu_score = calculateBleu(output_sentence, test_pair[1])
-                meteor_score = pymeteor.meteor(output_sentence, test_pair[1])
+                bleu_score = 0#calculateBleu(output_sentence, test_pair[1])
+                meteor_score = 0#pymeteor.meteor(output_sentence, test_pair[1])
                 # Add to totals
                 bleu_total += bleu_score
                 meteor_total += meteor_score
