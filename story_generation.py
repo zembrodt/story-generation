@@ -16,26 +16,45 @@ HIDDEN_SIZE = 256
 EMBEDDING_SIZE = glove.DIMENSION_SIZES[-1]
 DATA_FILE_FORMAT = 'data/{}_{}_{}.txt'
 
-def get_sentences(book_title):
+def get_sentences(book_title, pre_parsed=False):
 	global MAX_LENGTH # We set MAX_LENGTH to the longest sentence within the book
 	
-	lines = open('data/%s.txt' % book_title, encoding='utf-8').read().strip().split('\n')
-	lines = [book.normalizeString(line) for line in lines if len(line) > 0]
-	with open('data/contractions_dictionary.txt', 'r') as f:
-		s = f.read()
-		contractions = eval(s)
-	contraction_dict = book.ContractionDict(contractions)
-	sentences = book.convertLinesToSentences(lines, contraction_dict)
-	
-	# Set MAX_LENGTH const:
-	sentences_split = [sentence.split() for sentence in sentences]
-	MAX_LENGTH = max(map(len, sentences_split)) + 1
-	print('max sentence len={}'.format(MAX_LENGTH))
+	if pre_parsed:
+		with open('data/{}.txt'.format(book_title)) as f:
+			sentences = f.read().strip().split('\n')
+		# Set MAX_LENGTH const:
+		sentences_split = [sentence.split() for sentence in sentences]
+		MAX_LENGTH = max(map(len, sentences_split)) + 1
+		print('max_length={}'.format(MAX_LENGTH))
+		return sentences
+	else:
+		with open('data/contractions_dictionary.txt', 'r') as f:
+			s = f.read()
+			contractions = eval(s)
+		contraction_dict = book.ContractionDict(contractions)
+
+		with open('data/{}.txt'.format(book_title), encoding='utf-8', errors='ignore') as f:
+			lines = f.read().strip().split('\n')
+		sentences = book.convertLinesToSentences(lines, contraction_dict)
+		#sentences = convertLinesToSentencesNew(lines)   
+
+		#lines = open('data/%s.txt' % book_title, encoding='utf-8').read().strip().split('\n')
+		#lines = [book.normalizeString(line) for line in lines if len(line) > 0]
+		#with open('data/contractions_dictionary.txt', 'r') as f:
+		#	s = f.read()
+		#	contractions = eval(s)
+		#contraction_dict = book.ContractionDict(contractions)
+		#sentences = book.convertLinesToSentences(lines, contraction_dict)
+		
+		# Set MAX_LENGTH const:
+		sentences_split = [sentence.split() for sentence in sentences]
+		MAX_LENGTH = max(map(len, sentences_split)) + 1
+		print('max sentence len={}'.format(MAX_LENGTH))
 	
 	return sentences
 		
 # Read all the lines from a book and convert them to an array of sentences
-def get_pairs(book_title, percentage):
+def get_pairs(book_title, percentage, pre_parsed=False):
 	print('Reading book...')
 	train_pairs = None
 	test_pairs = None
@@ -54,7 +73,8 @@ def get_pairs(book_title, percentage):
 		test_pairs = [item for item in zip(test_iter, test_iter)]
 	else:
 		print('Writing to file')
-		sentences = get_sentences(book_title)
+		print('pre_parsed={}'.format(pre_parsed))
+		sentences = get_sentences(book_title, pre_parsed=pre_parsed)
 		# Convert all sentences into pairs and split into training and testing data 
 		sentences_iter = iter(sentences)
 		next(sentences_iter)
@@ -125,9 +145,9 @@ def main():
 	global MAX_LENGTH
 	print('Hidden layer size: {}'.format(HIDDEN_SIZE))
 
-	book_title = '1_sorcerers_stone'
+	book_title = 'combined'
 	
-	train_pairs, test_pairs = get_pairs(book_title, 0.8)
+	train_pairs, test_pairs = get_pairs(book_title, 0.8, pre_parsed=False)
         
         
 	# Check that we set MAX_LENGTH:
@@ -155,7 +175,7 @@ def main():
 			network.train_model(train_pairs, epoch_size, use_glove_embeddings=True, save_temp_models=True, loss_dir=loss_dir)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
-		perplexity_score, bleu_score, meteor_score, beam_bleu_score, beam_meteor_score = network.evaluate_test_set(test_pairs)
+		perplexity_score, bleu_score, meteor_score = network.evaluate_test_set(test_pairs)
 		
 		"""output in evaluateTestSet
 		print('evaluate:')
