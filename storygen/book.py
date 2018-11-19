@@ -8,6 +8,7 @@ import sys
 import nltk
 import nltk.data
 from nltk.corpus import stopwords
+import json
 
 START_ID = 0
 START_TOKEN = '<START>'
@@ -16,12 +17,16 @@ STOP_TOKEN = '<STOP>'
 
 CONTRACTION_PAIRS = [
     ('\'ll', ' *ll'),
+    ('\'re', ' *re'),
     ('\'s', ' *s'),
     ('\'d', ' *d'),
     ('\'m', ' *m'),
     ('\'ve', ' *ve'),
+    ('n\'t', ' not'),
     ('s\'', 's *')
 ]
+
+CONTRACTIONS_FILE = 'data/contractions_dictionary.txt'
 
 # Harry Potter books have a max of 38 chapters and an epilogue
 CHAPTER_NUMBERS = [
@@ -30,10 +35,6 @@ CHAPTER_NUMBERS = [
     'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
     'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
     'thirty', 'epilouge'
-    #'twenty one', 'twenty two', 'twenty three', 'twenty four', 'twenty five',
-    #'twenty six', 'twenty seven', 'twenty eight', 'twenty nine', 'thirty',
-    #'thirty one', 'thirty two', 'thirty three', 'thirty four', 'thirty five',
-    #'thirty six', 'thirty seven', 'thirty eight', 'epilogue'
 ]
 
 ## Classes ##
@@ -87,24 +88,28 @@ def unicodeToAscii(s):
 # commas, double quotes, hyphens, colons, semi-colons
 def normalizeString(s):
     s = unicodeToAscii(s.lower().strip())
+    # Check if hyphens are against single/double quotes (we need to keep the quotes and not add a space)
     if re.search(r'((\'|\")\-+|\-+(\'|\"))', s):
         s = re.sub(r'(\'\-+\s*|\s*\-+\')', '\'', s)
         s = re.sub(r'(\"\-+\s*|\s*\-+\")', '\"', s)
+    s = re.sub(r'[\(\)\*\_\\\/]', ' ', s) # Punctuations to remove
     s = re.sub(r"\s\-+\s", ' ', s)
     s = re.sub(r"[,\-:]", '', s)
-    # TODO: when removing hyphens, we need to check if any double quotes are next to it
     s = re.sub(r"mr\.", "mr", s)
     s = re.sub(r"mrs\.", "mrs", s)
     s = re.sub(r"ms\.", "ms", s)
     s = re.sub(r'j\.k\.', 'jk', s)
+    s = re.sub(r'b\.c\.', 'bc', s)
+    s = re.sub(r'a\.d\.', 'ad', s)
     return s
 
 # Helper function
 def _replace_multiple_periods(word, replace_text=''):
-    if word[-1] in ['"', '\'']:
-        quote_char = word[-1]
-        return '{}{}'.format(re.sub(r'[\.]{2,}(\"|\')?$', replace_text, word), quote_char)
-    return re.sub(r'[\.]{2,}$', replace_text, word)
+    #if word[-1] in ['"', '\'']:
+    #    quote_char = word[-1]
+    #    return '{}{}'.format(re.sub(r'[\.]{2,}(\"|\')?$', replace_text, word), quote_char)
+    #return re.sub(r'[\.]{2,}$', replace_text, word)
+    return re.sub(r'[\.]{2,}', replace_text, word)
 
 # Handle multiple periods by determining if they end a sentence or not
 # If they end a sentence, replace with a single period
@@ -115,9 +120,23 @@ def replace_multiple_periods(lines):
         for j, word in enumerate(words):
             # Separate sentences if multiple periods exist based on the following conditions:
             # First char after periods is capital, and not "I" or "I'*".
-            if re.search(r'[\.]{2,}(\"|\')?$', word): # Checks [word]..$/"$/'$
+            if re.search(r'[\.]{2,}', word): # Checks [word]..[.*]
+                # Check if this is multiple periods separating two words, no spaces
+                if re.search(r'[\.]{2,}\w', word):
+                    word_split = re.sub(r'[\.]{2,}', ' ', word).split()
+                    word_builder = word_split[0]
+                    # Combine the words together, deciding if there should be a period or space
+                    for k in range(len(word_split)):
+                        if k+1 < len(word_split):
+                            # If the word following the periods is capital, and is not "I", "I'*", etc, add a period
+                            if re.search(r'^[A-Z]', word_split[k+1]) and not re.search(r'^(I\'.+|I[.!?]*$)', word_split[k+1]):
+                                word_builder += '. ' + word_split[k+1]
+                            else:
+                                word_builder += ' ' + word_split[k+1]
+                    # Replace our current word
+                    word = word_builder
                 # Check the next word
-                if j+1 < len(words):
+                elif j+1 < len(words):
                     # First char is capital, and not "I", "I'*", etc
                     if re.search(r"^[A-Z]", words[j+1]) and not re.search(r"^(I'.+|I[.!?]*$)", words[j+1]):
                         # Replace "..+" with "."
@@ -143,6 +162,8 @@ def replace_multiple_periods(lines):
                     else:
                         # EOL, and EOF, replace "..+" with " "
                         word = _replace_multiple_periods(word)
+            elif re.search(r'^(\'|\")?[\.]{2,}\w', word):
+                word = _replace_multiple_periods(word)
             words[j] = word
         lines[i] = ' '.join(words)
     return lines
@@ -221,20 +242,47 @@ def remove_chapter_titles(lines):
     return parsed_lines
 
 def parse_dialogue(lines):
-    # TODO: determine if single quotes are surrounding inner-dialogue?
     sentences = []
     currSentence = []
     inDialogue = False
     inInnerDialogue = False
-    for line in lines:
+    for i, line in enumerate(lines):
         # Correction for inDialogue bool
         if inDialogue and len(line) == 0:
             inDialogue = False
         if '"' in line:
-            for word in line.split():
+            line_words = line.split()
+            for j, word in enumerate(line_words):
                 # Search for dialogue to find double quotes
                 if '"' in word:
-                    if re.match(r'^\".+\"$', word):
+                    # Special case where double quote is separated as its own token
+                    if word == '"':
+                        if inDialogue:
+                            if len(currSentence) > 0:
+                                sentences.append(' '.join(currSentence))
+                                currSentence = []
+                            inDialogue = False
+                        else:
+                            # We are not in dialogue, will need to do a few checks
+                            # Check if the previous word contained a double quote
+                            prev_line_words = []
+                            if i > 0:
+                                prev_line_words = lines[i-1].split()
+                            if (j > 0 and '"' in line_words[j-1]) or \
+                                    (j == 0 and len(prev_line_words) > 0 and '"' in prev_line_words[-1]):
+                                # Current sentence should be empty, but if not, let's empty it
+                                if len(currSentence) > 0:
+                                    sentences.append(' '.join(currSentence))
+                                    currSentence = []
+                                inDialogue = True # Set dialogue for next sentence
+                            #elif (j+1 < len(words) and '"' in words[j+1]) or (i+1 < len(words) and '"' in line[i+1].split()[0]):
+                            else:
+                                # Previous word did not have double quotes, next does.
+                                # End current sentence, inDialogue already set to False
+                                if len(currSentence) > 0:
+                                    sentences.append(' '.join(currSentence))
+                                    currSentence = []
+                    elif re.match(r'^\".+\"$', word):
                         if not inDialogue:
                             # Remove double quotes from word
                             word = re.sub('"', '', word)
@@ -269,7 +317,6 @@ def parse_dialogue(lines):
                         # Remove double quote and add word
                         word = re.sub('"', '', word)
                         currSentence.append(word)
-                # TODO
                 elif '\'' in word:
                     if re.match(r'^\'.+\'$', word):
                         word = re.sub('\'', '', word)
@@ -310,11 +357,19 @@ def parse_dialogue(lines):
                     currSentence.append(word)
         else:
             sentences.append(line)
+        
     return sentences
+
+# Removes all punctuation from the given lines
+def remove_punctuation(lines, replace_str=''):
+    for i, line in enumerate(lines):
+        # Single quotes are not handled by this as they are a special case and already removed
+        lines[i] = re.sub(r'[\"\(\)\-\_\+\=\&\^\$\%\#\@\~\`\.\;\:\\\/\<\>]', replace_str, line)
+    return lines
 
 # Converts an array of strings representing lines in a file to an array of strings
 # where each string is a roughly a setnence. Removes punctuation.
-def convertLinesToSentences(lines, contraction_dict):
+def convertLinesToSentences(lines, contraction_dict, debug_results=False):
     try:
         tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
     except Exception:
@@ -349,24 +404,38 @@ def convertLinesToSentences(lines, contraction_dict):
             words = sentence.split()
             for j, word in enumerate(words):
                 if '\'' in word:
+                    # Remove any punctuation from word to expand:
+                    word = re.sub(r'[\.\!\?\;\:\"]', '', word)
                     # Expand words within our contraction dictionary
                     convertedWords, found_contraction = contraction_dict.convert(word)
                     # Check if we expanded the words
                     if found_contraction:
                         convertedWords = convertedWords.split()
-                        words[j] = convertedWords[0]
+                        #words[j] = convertedWords[0]
+                        words[j] = ' '.join(convertedWords)
                         # Insert the additional words (if they exist) into the sentence
-                        for k, convertedWord in enumerate(convertedWords[1:]):
-                            words.insert(j+k+1, convertedWord)
-                    else:
-                        # Word was not expanded by the contraction_dict
-                        # Check if we can expand out any contractions in the words
-                        for contraction_pair in CONTRACTION_PAIRS:
-                            words[j] = words[j].replace(contraction_pair[0], contraction_pair[1])
+                        # This may cause incosistencies with 'j' and 'word' as we're now enumerating over a modified list
+                        #for k, convertedWord in enumerate(convertedWords[1:]):
+                        #    words.insert(j+k+1, convertedWord)
+            sentences[i] = ' '.join(words)
+            # Now iterate over the sentence seeing if we can expand out any contractions
+            words = sentences[i].split()
+            for j, word in enumerate(words):
+                if '\'' in word:
+                    # Remove any punctuation from word to expand:
+                    word = re.sub(r'[\.\!\?\;\:\"]', '', word)
+                    # Check if we can expand out any contractions in the words
+                    for contraction_pair in CONTRACTION_PAIRS:
+                        regex = r'{}$'.format(contraction_pair[0])
+                        if re.search(regex, word):
+                            words[j] = re.sub(regex, contraction_pair[1], word)
             sentences[i] = ' '.join(words)
     
     # Separate dialogue into its own sentences
     sentences = parse_dialogue(sentences)
+
+    # Remove any leftover single quotes
+    sentences = [re.sub(r'\'', '', sentence) for sentence in sentences]
 
     # Separate terminator tokens into their own sentences ('.', ';', '!', '?') and move ('?' and '!') into their own token
     for i, sentence in enumerate(sentences):
@@ -382,6 +451,14 @@ def convertLinesToSentences(lines, contraction_dict):
                     parsed_sentence += words + ['\n']
                 elif word in ['.', '!', '?', ';']:
                     parsed_sentence += [word, '\n']
+                elif re.search(r'[\.!?;]', word):
+                    # Special case of multiple terminators concatenated
+                    words = []
+                    while (re.search(r'[\.!?;]{2,}', word)):
+                        words += separate_terminator(word)
+                        word = ' '.join(words)
+                    words = separate_terminator(word)
+                    parsed_sentence += words
                 else:
                     parsed_sentence.append(word)
             sentences[i] = ' '.join(parsed_sentence)
@@ -391,7 +468,14 @@ def convertLinesToSentences(lines, contraction_dict):
     for sentence in sentences:
         final_sentences += [s.strip() for s in sentence.split('\n') if len(s) > 0]
     # Remove placeholder asterisks with single quotes
-    return [re.sub(r'\*', '\'', sentence) for sentence in final_sentences]
+    final_sentences = [re.sub(r'\*', '\'', sentence) for sentence in final_sentences]
+
+    # Final pass to remove all punctuation
+    if not debug_results:
+        return remove_punctuation(final_sentences)
+    else:
+        # Have the option to return punctuations to further debug parsing on specific texts
+        return final_sentences
 
 # Called when book.py is executed directly
 def main():
@@ -438,9 +522,47 @@ def main():
             else:
                 print('{} is not a file!'.format(arg))
             exit()
-
+        elif sys.argv[1] == '--contractions':
+            arg = sys.argv[2]
+            if os.path.isdir(arg):
+                # Create the contractions dictionary file if it does not exist
+                if not os.path.isfile(CONTRACTIONS_FILE):
+                    with open(CONTRACTIONS_FILE, 'w+') as f:
+                        f.write('{}')
+                # Build/update contractions dictionary template based on files in given directory
+                with open(CONTRACTIONS_FILE, 'r') as f:
+                    s = f.read()
+                    contractions = eval(s)
+                for book_file in os.listdir(arg):
+                    # Get lines from file
+                    book_file_path = '{}{}'.format(arg if arg[-1] == '/' or arg[-1] == '\\' else arg+'/', book_file)
+                    # Open the given text files (ignore bytes not in utf-8)
+                    with open(book_file_path, encoding='utf-8', errors='ignore') as f:
+                        lines = f.read().strip().split('\n')
+                    # Add any words that aren't already in the dictionary
+                    for line in lines:
+                        line = unidecode(line) # Convert unicode characters to ascii
+                        line = re.sub(r'[\,\!\.\?\-\(\)\;\:\=\\\/\"]', ' ', line.lower())
+                        for word in line.split():
+                            # If the word has a single quote
+                            if '\'' in word:
+                                # Remove any punctuation from the word
+                                # if the word is not in the dictionary and not possessive (*'s/*s')
+                                if word not in contractions and not re.search(r'(\'s$|s\'$)', word):
+                                    contractions[word.lower()] = ""
+                # Save the dictionary with json
+                with open(CONTRACTIONS_FILE, 'w') as f:
+                    f.write('{\n')
+                    keys = sorted(contractions)
+                    for key in keys:
+                        f.write('"{}": "{}",\n'.format(key, contractions[key]))
+                    f.write('}')
+                exit()
+            else:
+                print('{} is not a directory!'.format(arg))
+    # TODO: possible parsing: '' -> "
     # Create contractions dictionary
-    with open('data/contractions_dictionary.txt', 'r') as f:
+    with open(CONTRACTIONS_FILE, 'r') as f:
         s = f.read()
         contractions = eval(s)
     contraction_dict = ContractionDict(contractions)
@@ -476,10 +598,6 @@ def main():
                 print('Saved {}.'.format(parsed_filename))
             #except Exception as e:
             #    print('Failed converting \'{}\'. Cause:\n{}'.format(book_file_path, e))
-        # TODO: POSSIBLE DIALOGUE FIX:
-            # don't need 'inDialogue' variable, just check if word contains double quotes
-            # if double quotes at start of word ("...), end current sentence and start a new sentence with word
-            # if double quotes at end of word (..."), end current sentence with word
         print ('Max sentence lengths:')
         for book in max_lengths:
             print('\t{}: {}'.format(book, max_lengths[book]))
