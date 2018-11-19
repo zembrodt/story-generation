@@ -30,8 +30,10 @@ from storygen import glove
 from storygen import log
 
 # Filename format: obj/{encoder or decoder}_{epoch-size}_{embedding-size}_{hidden-size}_{max-length}.torch
-ENCODER_FILE_FORMAT = 'obj/encoder_{}_{}_{}_{}.torch'
-DECODER_FILE_FORMAT = 'obj/decoder_{}_{}_{}_{}.torch'
+ENCODER_FILE_FORMAT = '{}/encoder_{}_{}_{}_{}.torch'
+DECODER_FILE_FORMAT = '{}/decoder_{}_{}_{}_{}.torch'
+
+CHECKPOINT_DIR = 'obj'
 
 LOSS_FILE_FORMAT = '{}loss.dat'
 VALIDATION_LOSS_FILE_FORMAT = '{}validation.dat'
@@ -300,15 +302,27 @@ class Seq2Seq:
     #
     # Then we call "train" many times and occasionally print the progress (%
     # of examples, time so far, estimated time) and average loss.
-    def train_model(self, train_pairs, epochs, validation_size=0.1, validate_every=10, use_glove_embeddings=False, save_temp_models=False, checkpoint_every=50, loss_dir=None, print_every=1000, learning_rate=0.01):
+    def train_model(self, train_pairs, epochs, validation_size=0.1, validate_every=10, embedding_type=None, save_temp_models=False, checkpoint_every=25, loss_dir=None, print_every=1000, learning_rate=0.01):
         logfile = self.log.create('seq2seq-train-model')
+
+        # Set folder for checkpoints
+        if embedding_type is not None:
+            if embedding_type == 'glove':
+                CHECKPOINT_DIR = 'obj_glove'
+            elif embedding_type == 'sg':
+                CHECKPOINT_DIR = 'obj_sg'
+            elif embedding_type == 'cbow':
+                CHECKPOINT_DIR = 'obj_cbow'
+            else:
+                print('Incorrect embedding type given! Please choose one of ["glove", "sg", "cbow"]')
+                exit()
 
         # Check if any checkpoints for this model exist:
         encoders = set()
         decoders = set()
         re_format = '{}_(\d+)_{}_{}_{}.torch'
 
-        for filename in os.listdir('obj/'):
+        for filename in os.listdir('{}/'.format(CHECKPOINT_DIR)):
             r_enc = re.search(re_format.format('encoder', self.embedding_size, self.hidden_size, self.max_length), filename)
             if r_enc:
                 encoders.add(int(r_enc.group(1)))
@@ -345,8 +359,8 @@ class Seq2Seq:
         if self.encoder is None or self.decoder is None:
             if start_epoch > 0:
                 # Load the encoder/decoder for the starting epoch checkpoint
-                encoder_filename = ENCODER_FILE_FORMAT.format(start_epoch, self.embedding_size, self.hidden_size, self.max_length)
-                decoder_filename = DECODER_FILE_FORMAT.format(start_epoch, self.embedding_size, self.hidden_size, self.max_length)
+                encoder_filename = ENCODER_FILE_FORMAT.format(CHECKPOINT_DIR, start_epoch, self.embedding_size, self.hidden_size, self.max_length)
+                decoder_filename = DECODER_FILE_FORMAT.format(CHECKPOINT_DIR, start_epoch, self.embedding_size, self.hidden_size, self.max_length)
                 if self.loadFromFiles(encoder_filename, decoder_filename):
                     self.log.info(logfile, 'Loaded encoder/decoder from files at checkpoint {}'.format(start_epoch))
                 else:
@@ -393,10 +407,9 @@ class Seq2Seq:
                 self.decoder = decoder.DecoderRNN(self.book.n_words, self.hidden_size, self.embedding_size, self.max_length).to(self.device)
 
         # Create the GloVe embedding's weight matrix:
-        if use_glove_embeddings:
+        if embedding_type is not None:
             # Generates a dict of a word to its GloVe vector
-            #words2vec = glove.generate_glove(dim_size=self.embedding_size)
-            words2vec = glove.generate_glove(custom=True)
+            words2vec = glove.generate_glove(dim_size=self.embedding_size, embedding_type=embedding_type)
             # Create weight matrix:
             weights_matrix = np.zeros((self.book.n_words, self.embedding_size))
             words_found = 0
@@ -473,8 +486,8 @@ class Seq2Seq:
 
             # Save a checkpoint
             if save_temp_models:
-                encoder_filename = ENCODER_FILE_FORMAT.format(i+1, self.embedding_size, self.hidden_size, self.max_length)
-                decoder_filename = DECODER_FILE_FORMAT.format(i+1, self.embedding_size, self.hidden_size, self.max_length)
+                encoder_filename = ENCODER_FILE_FORMAT.format(CHECKPOINT_DIR, i+1, self.embedding_size, self.hidden_size, self.max_length)
+                decoder_filename = DECODER_FILE_FORMAT.format(CHECKPOINT_DIR, i+1, self.embedding_size, self.hidden_size, self.max_length)
                 encoder_file = Path(encoder_filename)
                 decoder_file = Path(decoder_filename)
                 # Save model at current epoch if doesn't exist
@@ -484,8 +497,8 @@ class Seq2Seq:
                 # Delete second previous model if not a multiple of 10
                 if i > 1 and (i-1) % checkpoint_every != 0:
                     # Delete model with epoch = i-1
-                    encoder_file = Path(ENCODER_FILE_FORMAT.format(i-1, self.embedding_size, self.hidden_size, self.max_length))
-                    decoder_file = Path(DECODER_FILE_FORMAT.format(i-1, self.embedding_size, self.hidden_size, self.max_length))
+                    encoder_file = Path(ENCODER_FILE_FORMAT.format(CHECKPOINT_DIR, i-1, self.embedding_size, self.hidden_size, self.max_length))
+                    decoder_file = Path(DECODER_FILE_FORMAT.format(CHECKPOINT_DIR, i-1, self.embedding_size, self.hidden_size, self.max_length))
                     if encoder_file.is_file() and decoder_file.is_file():
                         encoder_file.unlink()
                         decoder_file.unlink()

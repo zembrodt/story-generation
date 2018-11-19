@@ -7,12 +7,15 @@ import timeit
 
 DIMENSION_SIZES  = [50, 100, 200, 300]
 DATA_FILE_FORMAT = 'data/glove.6B/glove.6B.{}d.txt'
-OBJ_FILE_FORMAT  = 'obj/glove.6B/globe.6B.{}d.pickle'
-DATA_CUSTOM_FILE = 'data/vectors.txt'
-OBJ_CUSTOM_FILE = 'obj/vectors.pickle'
+OBJ_FILE_FORMAT  = 'obj_glove/glove.6B/globe.6B.{}d.pickle'
+# Custom embeddings
+DATA_SG_FILE = 'data/vectors-sg.txt'
+OBJ_SG_FILE = 'obj_sg/vectors-sg.pickle'
+DATA_CBOW_FILE = 'data/vectors-cbow.txt'
+OBJ_CBOW_FILE = 'obj_cbow/vectors-cbow.pickle'
 
-def generate_glove(dim_size=50, local=False, custom=False):
-    if not custom:
+def generate_glove(dim_size=50, local=False, embedding_type='glove'):
+    if embedding_type == 'glove':
         if dim_size not in DIMENSION_SIZES:
             print('Incorrect dimension size given, please use one of the following sizes: {}'.format(DIMENSION_SIZES))
             return None
@@ -41,23 +44,35 @@ def generate_glove(dim_size=50, local=False, custom=False):
                 pickle.dump(words2vec, f)
             return words2vec
     else:
+        data_custom_file = None
+        obj_custom_file = None
+        if embedding_type == 'sg':
+            data_custom_file = DATA_SG_FILE
+            obj_custom_file = OBJ_SG_FILE
+        elif embedding_type == 'cbow':
+            data_custom_file = DATA_CBOW_FILE
+            obj_custom_file = OBJ_CBOW_FILE
+        else:
+            print('Incorrect embedding type given! Please choose one of ["glove", "sg", "cbow"]')
+            exit()
         # Check if an obj file exists
-        obj_file = pathlib.Path(OBJ_CUSTOM_FILE)
+        obj_file = pathlib.Path(obj_custom_file)
         if obj_file.exists():
             # Load from file with pickle
-            with open(OBJ_CUSTOM_FILE, 'rb') as f:
+            with open(obj_custom_file, 'rb') as f:
                 words2vec = pickle.load(f)
             return words2vec
         else:
-            os.makedirs(os.path.dirname(OBJ_CUSTOM_FILE), exist_ok=True)
+            # Create the new word2vec and save it from the custom embeddings
+            os.makedirs(os.path.dirname(obj_custom_file), exist_ok=True)
             words2vec = {}
-            with open(DATA_CUSTOM_FILE, 'rb') as f:
+            with open(data_custom_file, 'rb') as f:
                 for line in f:
                     line = line.decode().split()
                     word = line[0]
                     vector = np.array(line[1:]).astype(np.float)
                     words2vec[word] = vector
-            with open(OBJ_CUSTOM_FILE, 'wb') as f:
+            with open(obj_custom_file, 'wb') as f:
                 pickle.dump(words2vec, f)
             return words2vec
 

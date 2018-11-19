@@ -18,7 +18,6 @@ DATA_FILE_FORMAT = 'data/{}_{}_{}.txt'
 
 def get_sentences(book_title, pre_parsed=False):
 	global MAX_LENGTH # We set MAX_LENGTH to the longest sentence within the book
-	
 	if pre_parsed:
 		with open('data/{}.txt'.format(book_title)) as f:
 			sentences = f.read().strip().split('\n')
@@ -28,30 +27,23 @@ def get_sentences(book_title, pre_parsed=False):
 		print('max_length={}'.format(MAX_LENGTH))
 		return sentences
 	else:
-		with open('data/contractions_dictionary.txt', 'r') as f:
+		# Create contractions dictionary
+		with open(book.CONTRACTIONS_FILE, 'r') as f:
 			s = f.read()
 			contractions = eval(s)
 		contraction_dict = book.ContractionDict(contractions)
-
+		
+		# Open the given text files (ignore bytes not in utf-8)
 		with open('data/{}.txt'.format(book_title), encoding='utf-8', errors='ignore') as f:
 			lines = f.read().strip().split('\n')
 		sentences = book.convertLinesToSentences(lines, contraction_dict)
-		#sentences = convertLinesToSentencesNew(lines)   
 
-		#lines = open('data/%s.txt' % book_title, encoding='utf-8').read().strip().split('\n')
-		#lines = [book.normalizeString(line) for line in lines if len(line) > 0]
-		#with open('data/contractions_dictionary.txt', 'r') as f:
-		#	s = f.read()
-		#	contractions = eval(s)
-		#contraction_dict = book.ContractionDict(contractions)
-		#sentences = book.convertLinesToSentences(lines, contraction_dict)
-		
-		# Set MAX_LENGTH const:
+		# Set MAX_LENGTH const:		
 		sentences_split = [sentence.split() for sentence in sentences]
 		MAX_LENGTH = max(map(len, sentences_split)) + 1
 		print('max sentence len={}'.format(MAX_LENGTH))
-	
-	return sentences
+
+		return sentences
 		
 # Read all the lines from a book and convert them to an array of sentences
 def get_pairs(book_title, percentage, pre_parsed=False):
@@ -160,19 +152,39 @@ def main():
 	#input_book, output_book = get_books(book_title, train_pairs, test_pairs)
 	book = get_book(book_title, train_pairs, test_pairs)
 	
-	epoch_sizes = [2]#[100, 200, 400, 600]
+	#### Variables to modify ####
+	epoch_sizes = [100]
+	embedding_type = None
+	if len(sys.argv) > 1:
+		epoch_size = int(sys.argv[1])
+		epoch_sizes = [epoch_size]
+		if len(sys.argv) > 2:
+			embedding_type = sys.argv[2]
+		print('Epoch size     = {}'.format(epoch_size))
+		print('Embedding type = {}'.format(embedding_type))
+	####
 	for epoch_size in epoch_sizes:
 		print('Epoch size: {}'.format(epoch_size))
-		encoder_filename = seq2seq.ENCODER_FILE_FORMAT.format(epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
-		decoder_filename = seq2seq.DECODER_FILE_FORMAT.format(epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
+		obj_dir = 'obj'
+		if embedding_type is not None:
+			if embedding_type == 'glove':
+				obj_dir = 'obj_glove'
+			elif embedding_type == 'sg':
+				obj_dir = 'obj_sg'
+			elif embedding_type == 'cbow':
+				obj_dir = 'obj_cbow'
+			else:
+				print('Incorrect embedding type given! Please choose one of ["glove", "sg", "cbow"]')
+				exit()
+		encoder_filename = seq2seq.ENCODER_FILE_FORMAT.format(obj_dir, epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
+		decoder_filename = seq2seq.DECODER_FILE_FORMAT.format(obj_dir, epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
 
-		#network = seq2seq.Seq2Seq(input_book, output_book, MAX_LENGTH, HIDDEN_SIZE, DEVICE)
 		network = seq2seq.Seq2Seq(book, MAX_LENGTH, HIDDEN_SIZE, EMBEDDING_SIZE, DEVICE)
 		if not network.loadFromFiles(encoder_filename, decoder_filename):
 			loss_dir = None
 			if len(sys.argv) > 1:
 				loss_dir = sys.argv[1]
-			network.train_model(train_pairs, epoch_size, use_glove_embeddings=True, save_temp_models=True, loss_dir=loss_dir)
+			network.train_model(train_pairs, epoch_size, embedding_type=embedding_type, validate_every=1, save_temp_models=True, loss_dir=loss_dir)
 			network.saveToFiles(encoder_filename, decoder_filename)
 		
 		perplexity_score, bleu_score, meteor_score = network.evaluate_test_set(test_pairs)
