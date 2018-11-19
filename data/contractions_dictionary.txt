@@ -539,7 +539,7 @@
 "growin'": "growing",
 "guardin'": "guarding",
 "gulpin'": "gulping",
-"hadn't": ",
+"hadn't": "",
 "hagrid'": "",
 "hagrid'll": "",
 "ham'": "",
