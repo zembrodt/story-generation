@@ -303,6 +303,7 @@ class Seq2Seq:
     # Then we call "train" many times and occasionally print the progress (%
     # of examples, time so far, estimated time) and average loss.
     def train_model(self, train_pairs, epochs, validation_size=0.1, validate_every=10, embedding_type=None, save_temp_models=False, checkpoint_every=25, loss_dir=None, print_every=1000, learning_rate=0.01):
+        global CHECKPOINT_DIR
         logfile = self.log.create('seq2seq-train-model')
 
         # Set folder for checkpoints
@@ -316,6 +317,9 @@ class Seq2Seq:
             else:
                 print('Incorrect embedding type given! Please choose one of ["glove", "sg", "cbow"]')
                 exit()
+
+        self.log.info(logfile, 'Training for {} epochs'.format(epochs))
+        self.log.info(logfile, 'Embedding type: {}'.format(embedding_type))
 
         # Check if any checkpoints for this model exist:
         encoders = set()
