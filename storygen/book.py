@@ -8,7 +8,6 @@ import sys
 import nltk
 import nltk.data
 from nltk.corpus import stopwords
-import json
 
 START_ID = 0
 START_TOKEN = '<START>'
@@ -104,17 +103,22 @@ def normalizeString(s):
     return s
 
 # Helper function
+"""
 def _replace_multiple_periods(word, replace_text=''):
     #if word[-1] in ['"', '\'']:
     #    quote_char = word[-1]
     #    return '{}{}'.format(re.sub(r'[\.]{2,}(\"|\')?$', replace_text, word), quote_char)
     #return re.sub(r'[\.]{2,}$', replace_text, word)
     return re.sub(r'[\.]{2,}', replace_text, word)
-
+"""
 # Handle multiple periods by determining if they end a sentence or not
 # If they end a sentence, replace with a single period
 # If they do not, replace with whitespace
 def replace_multiple_periods(lines):
+    # Helper function
+    def replace_periods(word, replace_text=''):
+        return re.sub(r'[\.]{2,}', replace_text, word)
+
     for i, line in enumerate(lines):
         words = line.strip().split()
         for j, word in enumerate(words):
@@ -140,10 +144,10 @@ def replace_multiple_periods(lines):
                     # First char is capital, and not "I", "I'*", etc
                     if re.search(r"^[A-Z]", words[j+1]) and not re.search(r"^(I'.+|I[.!?]*$)", words[j+1]):
                         # Replace "..+" with "."
-                        word = _replace_multiple_periods(word, '.')
+                        word = replace_periods(word, '.')
                     else:
                         # Replace "..+" with " "
-                        word = _replace_multiple_periods(word)
+                        word = replace_periods(word)
                 else:
                     # Check the next line
                     if i+1 < len(lines):
@@ -152,18 +156,18 @@ def replace_multiple_periods(lines):
                             # First char is capital, or begins with dialogue (double quotes)
                             if re.search(r'^[A-Z\"]', next_words[0]):
                                 # Replace "..+" with "."
-                                word = _replace_multiple_periods(word, '.')
+                                word = replace_periods(word, '.')
                             else:
                                 # Next sentence begins with a lower case letter, let's assume the sentence continues
-                                word = _replace_multiple_periods(word)
+                                word = replace_periods(word)
                         else:
                             # Empty line next, assume the sentence ended
-                            word = _replace_multiple_periods(word, '.')
+                            word = replace_periods(word, '.')
                     else:
                         # EOL, and EOF, replace "..+" with " "
-                        word = _replace_multiple_periods(word)
+                        word = replace_periods(word)
             elif re.search(r'^(\'|\")?[\.]{2,}\w', word):
-                word = _replace_multiple_periods(word)
+                word = replace_periods(word)
             words[j] = word
         lines[i] = ' '.join(words)
     return lines
@@ -454,9 +458,14 @@ def convertLinesToSentences(lines, contraction_dict, debug_results=False):
                 elif re.search(r'[\.!?;]', word):
                     # Special case of multiple terminators concatenated
                     words = []
+                    iters = 0
+                    word_len = len(word)
                     while (re.search(r'[\.!?;]{2,}', word)):
                         words += separate_terminator(word)
                         word = ' '.join(words)
+                        if iters > word_len:
+                            break
+                        iters += 1
                     words = separate_terminator(word)
                     parsed_sentence += words
                 else:
