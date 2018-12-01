@@ -6,6 +6,7 @@ from pathlib import Path
 import random
 import sys
 import torch
+import getopt
 
 from storygen import *
 
@@ -133,14 +134,57 @@ def createStory(input_sentence, input_book, output_book, encoder, decoder):
     return story
 """
 
-def main():
+def main(argv):
 	global MAX_LENGTH
+
+	book_title = '1_sorcerers_stone'
+
+	help_msg = [
+		'Usage:\n',
+		'python3 story_generation.py [-h, --help] [--epoch <epoch_value>] [--embedding <embedding_type>] [--loss <loss_dir>]\n',
+		'\tAll command line arguments are optional, and any combination (beides -h) can be used\n',
+		'\t-h, --help: Provides help on command line parameters\n',
+		'\t--epoch <epoch_value>: specify an epoch value to train the model for or load a checkpoint from\n',
+		'\t--embedding <embedding_type>: specify an embedding to use from: [glove, sg, cbow]\n',
+		'\t--loss <loss_dir>: specify a directory to load loss values from (requires files loss.dat and validation.dat)']
+	help_msg = ''.join(help_msg)
+
+	# Get command line arguments
+	try:
+		opts, _ = getopt.getopt(argv, 'h', ['epoch=', 'embedding=', 'loss=', 'help'])
+	except getopt.GetoptError as e:
+		print(e)
+		print(help_msg)
+		exit(2)
+
+	# Default values
+	epoch_size = 100
+	embedding_type = None
+	loss_dir = None
+
+	# Set values from command line
+	for opt, arg in opts:
+		if opt in ('-h', '--help'):
+			print(help_msg)
+			exit()
+		elif opt == '--epoch':
+			try:
+				epoch_size = int(arg)
+			except ValueError:
+				print('{} is not an integer. Argument must be an int.'.format(arg))
+				exit()
+		elif opt == '--embedding':
+			embedding_type = arg
+		elif opt =='--loss':
+			loss_dir = arg
+
+	print('Epoch size     = {}'.format(epoch_size))
+	print('Embedding type = {}'.format(embedding_type))
+	print('Loss directory = {}'.format(loss_dir))
+	exit()
 	print('Hidden layer size: {}'.format(HIDDEN_SIZE))
 
-	book_title = 'combined'
-	
 	train_pairs, test_pairs = get_pairs(book_title, 0.8, pre_parsed=False)
-        
         
 	# Check that we set MAX_LENGTH:
 	if MAX_LENGTH is None:
@@ -149,65 +193,49 @@ def main():
 			max(map(len, [sentence.split() for pair in test_pairs for sentence in pair])))
 		MAX_LENGTH += 1 # for <EOL> token
     
-	#input_book, output_book = get_books(book_title, train_pairs, test_pairs)
 	book = get_book(book_title, train_pairs, test_pairs)
+
+	print('Epoch size: {}'.format(epoch_size))
+	obj_dir = 'obj'
+	if embedding_type is not None:
+		if embedding_type == 'glove':
+			obj_dir = 'obj_glove'
+		elif embedding_type == 'sg':
+			obj_dir = 'obj_sg'
+		elif embedding_type == 'cbow':
+			obj_dir = 'obj_cbow'
+		else:
+			print('Incorrect embedding type given! Please choose one of ["glove", "sg", "cbow"]')
+			exit()
+	encoder_filename = seq2seq.ENCODER_FILE_FORMAT.format(obj_dir, epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
+	decoder_filename = seq2seq.DECODER_FILE_FORMAT.format(obj_dir, epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
+
+	network = seq2seq.Seq2Seq(book, MAX_LENGTH, HIDDEN_SIZE, EMBEDDING_SIZE, DEVICE)
+	if not network.loadFromFiles(encoder_filename, decoder_filename):
+		network.train_model(train_pairs, epoch_size, embedding_type=embedding_type, validate_every=1, save_temp_models=True, loss_dir=loss_dir)
+		network.saveToFiles(encoder_filename, decoder_filename)
 	
-	#### Variables to modify ####
-	epoch_sizes = [100]
-	embedding_type = None
-	if len(sys.argv) > 1:
-		epoch_size = int(sys.argv[1])
-		epoch_sizes = [epoch_size]
-		if len(sys.argv) > 2:
-			embedding_type = sys.argv[2]
-		print('Epoch size     = {}'.format(epoch_size))
-		print('Embedding type = {}'.format(embedding_type))
-	####
-	for epoch_size in epoch_sizes:
-		print('Epoch size: {}'.format(epoch_size))
-		obj_dir = 'obj'
-		if embedding_type is not None:
-			if embedding_type == 'glove':
-				obj_dir = 'obj_glove'
-			elif embedding_type == 'sg':
-				obj_dir = 'obj_sg'
-			elif embedding_type == 'cbow':
-				obj_dir = 'obj_cbow'
-			else:
-				print('Incorrect embedding type given! Please choose one of ["glove", "sg", "cbow"]')
-				exit()
-		encoder_filename = seq2seq.ENCODER_FILE_FORMAT.format(obj_dir, epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
-		decoder_filename = seq2seq.DECODER_FILE_FORMAT.format(obj_dir, epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
+	perplexity_score, bleu_score, meteor_score = network.evaluate_test_set(test_pairs)
+	
+	"""output in evaluateTestSet
+	print('evaluate:')
+	print('\tBLEU Score for %d epochs: %.4f' % (epoch_size, bleu_score))
+	print('\tMETEOR Score for %d epochs: %.4f' % (epoch_size, meteor_score))
+	print('\tPerplexity score for %d epochs: %.4f' % (epoch_size, perplexity_score))
 
-		network = seq2seq.Seq2Seq(book, MAX_LENGTH, HIDDEN_SIZE, EMBEDDING_SIZE, DEVICE)
-		if not network.loadFromFiles(encoder_filename, decoder_filename):
-			loss_dir = None
-			if len(sys.argv) > 1:
-				loss_dir = sys.argv[1]
-			network.train_model(train_pairs, epoch_size, embedding_type=embedding_type, validate_every=1, save_temp_models=True, loss_dir=loss_dir)
-			network.saveToFiles(encoder_filename, decoder_filename)
-		
-		perplexity_score, bleu_score, meteor_score = network.evaluate_test_set(test_pairs)
-		
-		"""output in evaluateTestSet
-		print('evaluate:')
-		print('\tBLEU Score for %d epochs: %.4f' % (epoch_size, bleu_score))
-		print('\tMETEOR Score for %d epochs: %.4f' % (epoch_size, meteor_score))
-		print('\tPerplexity score for %d epochs: %.4f' % (epoch_size, perplexity_score))
+	print('Beam search:')
+	print('\tBLEU Score for %d epochs: %.4f' % (epoch_size, beam_bleu_score))
+	print('\tMETEOR Score for %d epochs: %.4f' % (epoch_size, beam_meteor_score))
+	print('\tPerplexity score for %d epochs: %.4f' % (epoch_size, beam_perplexity_score))
+	"""
 
-		print('Beam search:')
-		print('\tBLEU Score for %d epochs: %.4f' % (epoch_size, beam_bleu_score))
-		print('\tMETEOR Score for %d epochs: %.4f' % (epoch_size, beam_meteor_score))
-		print('\tPerplexity score for %d epochs: %.4f' % (epoch_size, beam_perplexity_score))
-		"""
-
-		# Generate test story
-		"""
-		story1 = createStory("You're a wizard Harry .", input_book, output_book, encoder1, attn_decoder1)
-		for line in story1:
-			print('> %s' % line)
-		"""
+	# Generate test story
+	"""
+	story1 = createStory("You're a wizard Harry .", input_book, output_book, encoder1, attn_decoder1)
+	for line in story1:
+		print('> %s' % line)
+	"""
 
 if __name__ == '__main__':
-        main()
+        main(sys.argv[1:])
 
