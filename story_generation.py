@@ -54,12 +54,22 @@ def get_pairs(book_title, percentage, pre_parsed=False):
 	# Check if the train/test data exists for the given book with the given percentage
 	train_file = Path(DATA_FILE_FORMAT.format(book_title, int(percentage*100), 'train'))
 	test_file = Path(DATA_FILE_FORMAT.format(book_title, int(percentage*100), 'test'))
+
+	# Give the user a warning and option to re-parse the train/test pairs
+	# Useful if parse methods have been updated since when the pairs were created,
+	# if the user wants to reshuffle the pairs, or if the data in the input file has changed
+	load_from_files = False
 	if train_file.is_file() and test_file.is_file():
-		print('Reading from file')
+		choice = input('WARNING: found previously parsed train/test pairs, would you like to load? (y/n) ')
+		if choice.lower() in ['y', 'yes']:
+			load_from_files = True
+
+	if load_from_files:
+		print('Reading from file...')
 		# Read train/test data from the files
 		train_data = train_file.open(mode='r').read().split('\n')
 		test_data = test_file.open(mode='r').read().split('\n')
-		print('len(train/test_data)=%d, %d'%(len(train_data), len(test_data)))
+		print('len(train/test_data)={}, {}'.format(len(train_data), len(test_data)))
 		train_iter = iter(train_data)
 		train_pairs = [item for item in zip(train_iter, train_iter)]
 		test_iter = iter(test_data)
@@ -81,21 +91,17 @@ def get_pairs(book_title, percentage, pre_parsed=False):
 		train_data = [item for pair in train_pairs for item in pair]
 		test_data = [item for pair in test_pairs for item in pair]
 		# Write train data
-		f = train_file.open(mode='w')
-		for i, item in enumerate(train_data):
-			if i+1 < len(train_data):
-				f.write('%s\n'%item)
-			else:
-				f.write('%s'%item)
-		f.close()
+		with train_file.open(mode='w') as f:
+			for i, item in enumerate(train_data):
+				f.write(item)
+				if i+1 < len(train_data):
+					f.write('\n')
 		# Write test data
-		f = test_file.open('w')
-		for i, item in enumerate(test_data):
-			if i+1 < len(test_data):
-				f.write('%s\n'%item)
-			else:
-				f.write('%s'%item)
-		f.close()
+		with test_file.open('w') as f:
+			for i, item in enumerate(test_data):
+				f.write(item)
+				if i+1 < len(test_data):
+					f.write('\n')
 	
 	print('len(train/test)={}, {}'.format(len(train_pairs), len(test_pairs)))
 	print('train[0]={}\ntest[0]={}'.format(train_pairs[0], test_pairs[0]))
@@ -181,7 +187,7 @@ def main(argv):
 	print('Epoch size     = {}'.format(epoch_size))
 	print('Embedding type = {}'.format(embedding_type))
 	print('Loss directory = {}'.format(loss_dir))
-	exit()
+	
 	print('Hidden layer size: {}'.format(HIDDEN_SIZE))
 
 	train_pairs, test_pairs = get_pairs(book_title, 0.8, pre_parsed=False)
