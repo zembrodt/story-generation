@@ -1,8 +1,25 @@
 # Seq2Seq network objects
-obj/
+obj*/
+
+# Parsed data files
+data/glove.6B/
+data/*_parsed/
 
 # Output logs
 logs/
 
 # Submodule cache
 storygen/__pycache__/
+
+__pycache__/
+
+# VS Code
+launch.json
+
+# etc
+*.png
+*_raw.txt
+*_old.txt
+*_train.txt
+*_test.txt
+*_test/
