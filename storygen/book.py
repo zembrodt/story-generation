@@ -8,21 +8,17 @@ import sys
 import nltk
 import nltk.data
 from nltk.corpus import stopwords
+from nltk import word_tokenize
 
+# Ids and tokens to define the start and end of sentences
 START_ID = 0
 START_TOKEN = '<START>'
 STOP_ID = 1
 STOP_TOKEN = '<STOP>'
 
-CONTRACTION_PAIRS = [
-    ('\'ll', ' *ll'),
-    ('\'re', ' *re'),
-    ('\'s', ' *s'),
-    ('\'d', ' *d'),
-    ('\'m', ' *m'),
-    ('\'ve', ' *ve'),
-    ('n\'t', ' not'),
-    ('s\'', 's *')
+# Pre-defined contractions to keep
+CONTRACTIONS = [
+    'n\'t', '\'ll', '\'s', '\'re', '\'m', '\'d', '\'ve'
 ]
 
 CONTRACTIONS_FILE = 'data/contractions_dictionary.txt'
@@ -37,6 +33,7 @@ CHAPTER_NUMBERS = [
 ]
 
 ## Classes ##
+# Defines the word-to-index of the vocabulary in a book
 class Book:
     def __init__(self, name):
         self.name = name
@@ -59,6 +56,7 @@ class Book:
         else:
             self.word2count[word] += 1
 
+# Wrapper for accessing a dictionary of contractions
 class ContractionDict:
 	def __init__(self, contractions):
 		self.contractions = contractions
@@ -81,36 +79,20 @@ def unicodeToAscii(s):
 	if unicodedata.category(c) != 'Mn'
     )
 
-# Removes unneeded punctuation in the data:
-# mr. -> mr, etc
-# hyphens between words, ex: A -- B -> A B
-# commas, double quotes, hyphens, colons, semi-colons
+# Removes unneeded punctuation in the data
 def normalizeString(s):
     s = unicodeToAscii(s.lower().strip())
     # Check if hyphens are against single/double quotes (we need to keep the quotes and not add a space)
     if re.search(r'((\'|\")\-+|\-+(\'|\"))', s):
         s = re.sub(r'(\'\-+\s*|\s*\-+\')', '\'', s)
         s = re.sub(r'(\"\-+\s*|\s*\-+\")', '\"', s)
-    s = re.sub(r'[\(\)\*\_\\\/]', ' ', s) # Punctuations to remove
-    s = re.sub(r"\s\-+\s", ' ', s)
-    s = re.sub(r"[,\-:]", '', s)
-    s = re.sub(r"mr\.", "mr", s)
-    s = re.sub(r"mrs\.", "mrs", s)
-    s = re.sub(r"ms\.", "ms", s)
+    s = re.sub(r'[\(\)\*\_\\\/\-,:]', ' ', s) # Punctuations to remove, replace with space
+    # Special cases to parse
     s = re.sub(r'j\.k\.', 'jk', s)
     s = re.sub(r'b\.c\.', 'bc', s)
     s = re.sub(r'a\.d\.', 'ad', s)
     return s
 
-# Helper function
-"""
-def _replace_multiple_periods(word, replace_text=''):
-    #if word[-1] in ['"', '\'']:
-    #    quote_char = word[-1]
-    #    return '{}{}'.format(re.sub(r'[\.]{2,}(\"|\')?$', replace_text, word), quote_char)
-    #return re.sub(r'[\.]{2,}$', replace_text, word)
-    return re.sub(r'[\.]{2,}', replace_text, word)
-"""
 # Handle multiple periods by determining if they end a sentence or not
 # If they end a sentence, replace with a single period
 # If they do not, replace with whitespace
@@ -396,6 +378,9 @@ def convertLinesToSentences(lines, contraction_dict, debug_results=False):
     # Parse multiple periods to determine if they end a sentence
     sentences = replace_multiple_periods(sentences)
 
+    # Replace double single quotes with double quotes
+    sentences = [re.sub(r'\'\'', '"', sentence) for sentence in sentences]
+
     # Special case: remove "stuttering" dialogue (ex: b-b-but)
     sentences = remove_stuttering(sentences)
         
@@ -422,60 +407,44 @@ def convertLinesToSentences(lines, contraction_dict, debug_results=False):
                         #for k, convertedWord in enumerate(convertedWords[1:]):
                         #    words.insert(j+k+1, convertedWord)
             sentences[i] = ' '.join(words)
-            # Now iterate over the sentence seeing if we can expand out any contractions
+    
+    # Tokenize the sentences
+    for i, sentence in enumerate(sentences):
+        sentence = ' '.join(word_tokenize(sentence))
+        sentence = re.sub(r'(\'\'|\`\`)', '"', sentence)
+        sentence = re.sub(r'\s\'\s', ' " ', sentence)
+        # Append newlines on terminators to split on later
+        sentence = re.sub(r'\s\!\s', ' !\n ', sentence)
+        sentence = re.sub(r'\s\?\s', ' ?\n ', sentence)
+        sentence = re.sub(r'\s[\.\;]\s', ' \n ', sentence)
+        sentences[i] = sentence
+    
+    # Repleace known contractions with asterisks for placeholders
+    for i, sentence in enumerate(sentences):
+        if '\'' in sentence:
             words = sentences[i].split()
             for j, word in enumerate(words):
                 if '\'' in word:
                     # Remove any punctuation from word to expand:
                     word = re.sub(r'[\.\!\?\;\:\"]', '', word)
                     # Check if we can expand out any contractions in the words
-                    for contraction_pair in CONTRACTION_PAIRS:
-                        regex = r'{}$'.format(contraction_pair[0])
-                        if re.search(regex, word):
-                            words[j] = re.sub(regex, contraction_pair[1], word)
+                    if word in CONTRACTIONS:
+                        words[j] = re.sub(r'\'', '\*', word)
+                    else:
+                        words[j] = re.sub(r'\'', '', word)
             sentences[i] = ' '.join(words)
-    
+
     # Separate dialogue into its own sentences
     sentences = parse_dialogue(sentences)
 
     # Remove any leftover single quotes
     sentences = [re.sub(r'\'', '', sentence) for sentence in sentences]
 
-    # Separate terminator tokens into their own sentences ('.', ';', '!', '?') and move ('?' and '!') into their own token
-    for i, sentence in enumerate(sentences):
-        # Find sentence terminators ('.', ';', !', and '?')
-        # Sentence with terminators still in the middle (multiple sentences), or the terminator ending the sentence is
-        # still attached to a token
-        if re.match(r'^.+[\.!?;].+$', sentence) or re.search(r'\w+[\.!?;]$', sentence):
-            parsed_sentence = []
-            for word in sentence.split():
-                if re.match(r'\w+[\.!?;]$', word):
-                    # Terminator is attached to word
-                    words = separate_terminator(word)
-                    parsed_sentence += words + ['\n']
-                elif word in ['.', '!', '?', ';']:
-                    parsed_sentence += [word, '\n']
-                elif re.search(r'[\.!?;]', word):
-                    # Special case of multiple terminators concatenated
-                    words = []
-                    iters = 0
-                    word_len = len(word)
-                    while (re.search(r'[\.!?;]{2,}', word)):
-                        words += separate_terminator(word)
-                        word = ' '.join(words)
-                        if iters > word_len:
-                            break
-                        iters += 1
-                    words = separate_terminator(word)
-                    parsed_sentence += words
-                else:
-                    parsed_sentence.append(word)
-            sentences[i] = ' '.join(parsed_sentence)
-            
     # Need one final pass to split on newlines gathered in terminator section
     final_sentences = []
     for sentence in sentences:
         final_sentences += [s.strip() for s in sentence.split('\n') if len(s) > 0]
+    
     # Remove placeholder asterisks with single quotes
     final_sentences = [re.sub(r'\*', '\'', sentence) for sentence in final_sentences]
 
