@@ -33,10 +33,15 @@ from storygen import log
 ENCODER_FILE_FORMAT = '{}/encoder_{}_{}_{}_{}.torch'
 DECODER_FILE_FORMAT = '{}/decoder_{}_{}_{}_{}.torch'
 
+CHECKPOINT_FORMAT = '{}_(\d+)_{}_{}_{}.torch'
 CHECKPOINT_DIR = 'obj'
 
 LOSS_FILE_FORMAT = '{}loss.dat'
 VALIDATION_LOSS_FILE_FORMAT = '{}validation.dat'
+
+# State dicts fields
+STATE_DICT = 'state_dict'
+OPTIMIZER = 'optimizer'
 
 ## HELPER FUNCTIONS ##
 # Converts a sentence into a list of indexes
@@ -138,7 +143,7 @@ class Seq2Seq:
         self.i = 0
         self.j = 0
 
-    def loadFromFiles(self, encoder_filename, decoder_filename):
+    def loadFromFiles(self, encoder_filename, decoder_filename, learning_rate=0.01):
         # Check that the path for both files exists
         os.makedirs(os.path.dirname(encoder_filename), exist_ok=True)
         os.makedirs(os.path.dirname(decoder_filename), exist_ok=True)
@@ -148,11 +153,19 @@ class Seq2Seq:
 
         if encoder_file.is_file() and decoder_file.is_file():
             print("Loading encoder and decoder from files...")
+            # TODO: modify this to save encoder/decoder into a single state
+            encoder_checkpoint = torch.load(encoder_file, map_location=self.device)
+            decoder_checkpoint = torch.load(decoder_file, map_location=self.device)
+
             self.encoder = encoder.EncoderRNN(self.book.n_words, self.hidden_size, self.embedding_size).to(self.device)
-            self.encoder.load_state_dict(torch.load(encoder_file, map_location=self.device))
+            self.encoder.load_state_dict(encoder_checkpoint[STATE_DICT])
+            self.encoder_optimizer = optim.SGD(self.encoder.parameters(), lr=learning_rate)
+            self.encoder_optimizer.load_state_dict(encoder_checkpoint[OPTIMIZER])
             
             self.decoder = decoder.DecoderRNN(self.book.n_words, self.hidden_size, self.embedding_size, self.max_length).to(self.device)
-            self.decoder.load_state_dict(torch.load(decoder_file, map_location=self.device))
+            self.decoder.load_state_dict(decoder_checkpoint[STATE_DICT])
+            self.decoder_optimizer = optim.SGD(self.decoder.parameters(), lr=learning_rate)
+            self.decoder_optimizer.load_state_dict(decoder_checkpoint[OPTIMIZER])
 
             return True
         return False
@@ -165,8 +178,17 @@ class Seq2Seq:
         encoder_file = Path(encoder_filename)
         decoder_file = Path(decoder_filename)
 
-        torch.save(self.encoder.state_dict(), encoder_file)
-        torch.save(self.decoder.state_dict(), decoder_file)
+        encoder_state = {
+            STATE_DICT: self.encoder.state_dict(),
+            OPTIMIZER: self.encoder_optimizer.state_dict()
+        }
+        decoder_state = {
+            STATE_DICT: self.decoder.state_dict(),
+            OPTIMIZER: self.decoder_optimizer.state_dict()
+        }
+
+        torch.save(encoder_state, encoder_file)
+        torch.save(decoder_state, decoder_file)
     
     def _train(self, input_tensor, target_tensor, teacher_forcing_ratio=0.5):
         encoder_hidden = self.encoder.initHidden(self.device)
@@ -324,14 +346,13 @@ class Seq2Seq:
         # Check if any checkpoints for this model exist:
         encoders = set()
         decoders = set()
-        re_format = '{}_(\d+)_{}_{}_{}.torch'
 
         for filename in os.listdir('{}/'.format(CHECKPOINT_DIR)):
-            r_enc = re.search(re_format.format('encoder', self.embedding_size, self.hidden_size, self.max_length), filename)
+            r_enc = re.search(CHECKPOINT_FORMAT.format('encoder', self.embedding_size, self.hidden_size, self.max_length), filename)
             if r_enc:
                 encoders.add(int(r_enc.group(1)))
             else:
-                r_dec = re.search(re_format.format('decoder', self.embedding_size, self.hidden_size, self.max_length), filename)
+                r_dec = re.search(CHECKPOINT_FORMAT.format('decoder', self.embedding_size, self.hidden_size, self.max_length), filename)
                 if r_dec:
                     decoders.add(int(r_dec.group(1)))
         # A checkpoint needs a valid encoder and decoder 
@@ -655,7 +676,13 @@ class Seq2Seq:
 
             evaluate_tensor = tensorFromSentence(self.book, sentence_to_evaluate, self.device)
 
-            evaluate_items = [t.item() for t in evaluate_tensor.squeeze()]
+            # Previous error here: TypeError: iteration over a 0-d tensor
+            try:
+                evaluate_items = [t.item() for t in evaluate_tensor.squeeze()]
+            except TypeError as e:
+                print('TypeError thrown: {}'.format(repr(e)))
+                return None
+
             for evaluate_item in evaluate_items:
                 N += 1
                 decoder_output, decoder_hidden, decoder_attention = self.decoder(
