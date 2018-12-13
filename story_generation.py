@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # story_generation.py
 
 from io import open
@@ -47,7 +49,7 @@ def get_sentences(book_title, pre_parsed=False):
 		return sentences
 		
 # Read all the lines from a book and convert them to an array of sentences
-def get_pairs(book_title, percentage, pre_parsed=False):
+def get_pairs(book_title, percentage, pre_parsed=False, load_previous=True):
 	print('Reading book...')
 	train_pairs = None
 	test_pairs = None
@@ -55,16 +57,12 @@ def get_pairs(book_title, percentage, pre_parsed=False):
 	train_file = Path(DATA_FILE_FORMAT.format(book_title, int(percentage*100), 'train'))
 	test_file = Path(DATA_FILE_FORMAT.format(book_title, int(percentage*100), 'test'))
 
-	# Give the user a warning and option to re-parse the train/test pairs
+	# load_previous:
+	# Gives the user the option to re-parse the train/test pairs
 	# Useful if parse methods have been updated since when the pairs were created,
 	# if the user wants to reshuffle the pairs, or if the data in the input file has changed
-	load_from_files = False
-	if train_file.is_file() and test_file.is_file():
-		choice = input('WARNING: found previously parsed train/test pairs, would you like to load? (y/n) ')
-		if choice.lower() in ['y', 'yes']:
-			load_from_files = True
 
-	if load_from_files:
+	if train_file.is_file() and test_file.is_file() and load_previous:
 		print('Reading from file...')
 		# Read train/test data from the files
 		train_data = train_file.open(mode='r').read().split('\n')
@@ -146,18 +144,19 @@ def main(argv):
 	book_title = '1_sorcerers_stone'
 
 	help_msg = [
-		'Usage:\n',
-		'python3 story_generation.py [-h, --help] [--epoch <epoch_value>] [--embedding <embedding_type>] [--loss <loss_dir>]\n',
-		'\tAll command line arguments are optional, and any combination (beides -h) can be used\n',
-		'\t-h, --help: Provides help on command line parameters\n',
-		'\t--epoch <epoch_value>: specify an epoch value to train the model for or load a checkpoint from\n',
-		'\t--embedding <embedding_type>: specify an embedding to use from: [glove, sg, cbow]\n',
-		'\t--loss <loss_dir>: specify a directory to load loss values from (requires files loss.dat and validation.dat)']
-	help_msg = ''.join(help_msg)
+		'Usage:',
+		'python3 story_generation.py [-h, --help] [--epoch <epoch_value>] [--embedding <embedding_type>] [--loss <loss_dir>]',
+		'\tAll command line arguments are optional, and any combination (beides -h) can be used',
+		'\t-h, --help: Provides help on command line parameters',
+		'\t--epoch <epoch_value>: specify an epoch value to train the model for or load a checkpoint from',
+		'\t--embedding <embedding_type>: specify an embedding to use from: [glove, cbow, sg]',
+		'\t--loss <loss_dir>: specify a directory to load loss values from (requires files loss.dat and validation.dat)',
+		'\t-u, --update: specify that if previous train/test pairs exists, overwrite them with re-parsed data']
+	help_msg = '\n'.join(help_msg)
 
 	# Get command line arguments
 	try:
-		opts, _ = getopt.getopt(argv, 'h', ['epoch=', 'embedding=', 'loss=', 'help'])
+		opts, _ = getopt.getopt(argv, 'hu', ['epoch=', 'embedding=', 'loss=', 'help', 'update'])
 	except getopt.GetoptError as e:
 		print(e)
 		print(help_msg)
@@ -167,6 +166,7 @@ def main(argv):
 	epoch_size = 100
 	embedding_type = None
 	loss_dir = None
+	load_previous = True
 
 	# Set values from command line
 	for opt, arg in opts:
@@ -181,24 +181,25 @@ def main(argv):
 				exit()
 		elif opt == '--embedding':
 			embedding_type = arg
-		elif opt =='--loss':
+		elif opt == '--loss':
 			loss_dir = arg
+		elif opt in ('-u', '--update'):
+			load_previous = False
 
-	print('Epoch size     = {}'.format(epoch_size))
-	print('Embedding type = {}'.format(embedding_type))
-	print('Loss directory = {}'.format(loss_dir))
-	
-	print('Hidden layer size: {}'.format(HIDDEN_SIZE))
+	print('Epoch size        = {}'.format(epoch_size))
+	print('Embedding type    = {}'.format(embedding_type))
+	print('Loss directory    = {}'.format(loss_dir))
+	print('Hidden layer size = {}'.format(HIDDEN_SIZE))
 
-	train_pairs, test_pairs = get_pairs(book_title, 0.8, pre_parsed=False)
-        
+	train_pairs, test_pairs = get_pairs(book_title, 0.8, pre_parsed=False, load_previous=load_previous)
+	print('max_len={}'.format(MAX_LENGTH))
 	# Check that we set MAX_LENGTH:
 	if MAX_LENGTH is None:
 		MAX_LENGTH = max(
 			max(map(len, [sentence.split() for pair in train_pairs for sentence in pair])),
 			max(map(len, [sentence.split() for pair in test_pairs for sentence in pair])))
 		MAX_LENGTH += 1 # for <EOL> token
-    
+	print('max_len2={}'.format(MAX_LENGTH))
 	book = get_book(book_title, train_pairs, test_pairs)
 
 	print('Epoch size: {}'.format(epoch_size))
@@ -215,10 +216,12 @@ def main(argv):
 			exit()
 	encoder_filename = seq2seq.ENCODER_FILE_FORMAT.format(obj_dir, epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
 	decoder_filename = seq2seq.DECODER_FILE_FORMAT.format(obj_dir, epoch_size, EMBEDDING_SIZE, HIDDEN_SIZE, MAX_LENGTH)
+	print('enc_filename: {}'.format(encoder_filename))
+	print('dec_filename: {}'.format(decoder_filename))
 
 	network = seq2seq.Seq2Seq(book, MAX_LENGTH, HIDDEN_SIZE, EMBEDDING_SIZE, DEVICE)
 	if not network.loadFromFiles(encoder_filename, decoder_filename):
-		network.train_model(train_pairs, epoch_size, embedding_type=embedding_type, validate_every=1, save_temp_models=True, loss_dir=loss_dir)
+		network.train_model(train_pairs, epoch_size, embedding_type=embedding_type, validate_every=25, save_temp_models=True, loss_dir=loss_dir)
 		network.saveToFiles(encoder_filename, decoder_filename)
 	
 	perplexity_score, bleu_score, meteor_score = network.evaluate_test_set(test_pairs)
