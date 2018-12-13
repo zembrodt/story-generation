@@ -70,7 +70,7 @@ def calculateBleu(candidate, reference, n_gram=2):
     # Break candidate/reference into the format below
     candidate = candidate.split()
     reference = reference.split()
-    return sentence_bleu(reference, candidate)#, weights=(1,0,0,0))
+    return sentence_bleu([reference], candidate)#, weights=(1,0,0,0))
     
 ######################################################################
 # This is a helper function to print time elapsed and estimated time
