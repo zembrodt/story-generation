@@ -198,6 +198,7 @@ def main(argv):
     
     # Calculate scores on training data
     print('Calculating scores on training data...')
+
     actual_sentences_score_train, random_words_score_train, random_sentences_score_train = calculate_perplexities(network, words, train_pairs)
 
     print('Calculating scores on test data...')
@@ -218,6 +219,7 @@ def main(argv):
     logger.info(logfile, 'Random sentences score (train): {:.4f}'.format(random_sentences_score_train))
     logger.info(logfile, 'Random sentences score (test): {:.4f}'.format(random_sentences_score_test))
 
+    """ Temporarily removed due to index out-of-bounds errors...
     # Sentence segments (n-grams)
     sentences = storygen.get_sentences(book_title)
     n_gram_lengths = [1,2,3,4,6,8,12]
@@ -251,6 +253,7 @@ def main(argv):
         n_gram_score /= (len(sentences) - incorrect_lengths)
         print('{}-gram score: {:.4f}\n{:.2f%}% of sentences not included.'.format(n_gram, n_gram_score, float(incorrect_lengths)/len(sentences) * 100))
         logger.info(logfile, '{}-gram score: {:.4f}\n{:.2f%}% of sentences not included.'.format(n_gram, n_gram_score, float(incorrect_lengths)/len(sentences) * 100))
-    
+    """
+
 if __name__ == '__main__':
     main(sys.argv[1:])
