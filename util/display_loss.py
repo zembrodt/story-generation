@@ -12,13 +12,22 @@ VALIDATION = 'validation'
 TYPES = ['none', 'glove', 'sg', 'cbow']
 
 def main(argv):
-    opts, _ = getopt.getopt(argv, 'vnscg', ['validation']+TYPES)
+    opts, _ = getopt.getopt(argv, 'hvnscg', ['help', 'validation']+TYPES)
     display_validation = False
     # Check if any non-validation options were selected
     types_selected = []
     for opt, _ in opts:
-        if '-v' == opt or '--validation' == opt:
+        if opt in ('-v', '--validation'):
             display_validation = True
+        elif opt in ('-h', '--help'):
+            print('display_loss.py')
+            print('Any combination of parameters may be used.If none are selected, all embedding types are added\nUsage:')
+            print('\t-v, --validation: display validation values for selected embeddings, if no other parameters selected, all types are used')
+            print('\t-n,: display random (none) embedding values')
+            print('\t-g,: display GloVe embedding values')
+            print('\t-s,: display word2vec SG embedding values')
+            print('\t-c,: display word2vec CBOW embedding values')
+            exit(0)
         else:
             for t in TYPES:
                 if '-'+t[0] == opt or '--'+t == opt:

@@ -463,6 +463,13 @@ def main():
         exit()
 
     # Check for special case parameters
+    # TODO: convert this to use getopt
+    if len(sys.argv) > 1 and sys.argv[1] in ('-h', '--help'):
+        print('book.py\nUsage:')
+        print('\t--build <directory>: Combines all text files within the specified directory into a single combined file')
+        print('\t--filter <text file>: filters all stopwords out of the specified text file')
+        print('\t--contractions <directory>: builds/updates a contractions dictionary based on the corpora in the specified directory')
+        exit(0)
     if len(sys.argv) > 2:
         if sys.argv[1] == '--build':
             arg = sys.argv[2]
