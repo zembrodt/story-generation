@@ -40,10 +40,11 @@ Along with `story_generation.py`, several other files can be executed as standal
 Determined loading from checkpoints was not working correctly, and causing spikes in loss values when a model was loaded.<br/>
 Trained a Continuous Bag of Words word2vec embedding for 500 epochs. With this word2vec embedding, and the pre-trained GloVe embedding, trained 2 models for 500 epochs, without loading any checkpoints.<br/>
 The GloVe embedding seems to heavily outperform the word2vec embedding, with a minimum loss of value of **2.983** at the 250th epoch, and a final loss value of **3.083**.<br/>
-The results for each model is below:
+The results for each model are below:<br/>
 <img src="https://i.imgur.com/4d6hhTp.png" alt="Model trained with CBOW word2vec word embedding" /><br/>
 <img src="https://i.imgur.com/C3lChph.png" alt="Model trained with GloVe word embedding" /><br/>
 A perplexity study was also ran on the model with the GloVe embedding, with the results in the below table:<br/>
+
 | Epochs |                  | Training data | Testing data |
 |--------|------------------|---------------|--------------|
 | 250    | Actual sentences | 42.9893       | 736176.1818  |
@@ -51,14 +52,16 @@ A perplexity study was also ran on the model with the GloVe embedding, with the 
 |        | Random sentences | 295889.4025   | 299692.5997  |
 | 500    | Actual sentences | 37.0408       | 4872462.827  |
 |        | Random words     | 1270328937    | 6201033178   |
-|        | Random sentences | 27962670.27   | 2313469.597  |<br/>
+|        | Random sentences | 27962670.27   | 2313469.597  |
+
 Here, <em>actual sentences</em> refers to the score of given an input sentence, the perplexity of the model forcing it to evaluate to the real target sentence. <em>Random words</em> is such that given an input sentence, the perplexity of the model forcing it to evaluate a random target sentence of the same length as the real target sentence, but where each word was replaced by a random word selected from the corpus. Lastly, <em>random sentences</em> is such that given the input sentence, and forced to evaluate a target sentence of the same length as the real target sentence, but randomly chosen from the data.<br/>
 Out of the three categories of studies, <em>actual sentences</em> should perform the best, as they are the real sentences to follow the input sentences. This will be followed by <em>random sentences</em>, as they are full real sentences, meaning they have a real sentence structure, but may have nothing to do with the input. Finally, <em>random words</em> should perform the worse, as they will likely not have a real sentence structure. <br/>
-The above table shows that this is the case: training data usually outperforms testing data, <em>actual sentences</em> outperforms <em>random sentences</em>, which then outperformed <em>random words</em>. The 250th epoch model is taken from the minimum point in figure D, with an <em>actual sentences</em> value of **42.989**, this perplexity value was actually reduced to **37.041** for the 500th epoch of the same model. In fact, all training data perplexity values between the two models was decreased. However, the testing perplexity values all increased. For the extra 250 epochs the model trained for, it seemed to continue learning, but fitted too exactly to the training data, and became more "perplexed" by data it had not seen before. Finally, the actual perplexity themselves were extremely high for the testing data, further showing that perhaps the model hasn't learned enough to handle unseen data. One cause of this could be due to the lack for training data, with just over 5,000 sentence pairs. 
+The above table shows that this is the case: training data usually outperforms testing data, <em>actual sentences</em> outperforms <em>random sentences</em>, which then outperformed <em>random words</em>. The 250th epoch model had an <em>actual sentences</em> value of **42.989**, while this perplexity value was actually reduced to **37.041** for the 500th epoch of the same model. In fact, all training data perplexity values between the two models was decreased. However, the testing perplexity values all increased. For the extra 250 epochs the model trained for, it seemed to continue learning, but fitted too exactly to the training data, and became more "perplexed" by data it had not seen before. Finally, the actual perplexity themselves were extremely high for the testing data, further showing that perhaps the model hasn't learned enough to handle unseen data. One cause of this could be due to the lack for training data, with just over 5,000 sentence pairs. 
 
 ## Future work
 
 Beyond correcting current drawbacks, such as checkpoint loading issues, high perplexity values, and a minimum loss value of 3, future work could include:
+
 - Training and testing a working model on corpora of different types, such as news articles or song lyrics
 - Training more custom embeddings, either current ones for much longer, or using GloVe to train custom word embeddings rather than word2vec
 
