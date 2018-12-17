@@ -29,7 +29,7 @@ from storygen import decoder
 from storygen import glove
 from storygen import log
 
-# Filename format: obj/{encoder or decoder}_{epoch-size}_{embedding-size}_{hidden-size}_{max-length}.torch
+# Filename format: obj{_embedding-type}/{encoder or decoder}_{epoch-size}_{embedding-size}_{hidden-size}_{max-length}.torch
 ENCODER_FILE_FORMAT = '{}/encoder_{}_{}_{}_{}.torch'
 DECODER_FILE_FORMAT = '{}/decoder_{}_{}_{}_{}.torch'
 
@@ -72,10 +72,8 @@ def calculateBleu(candidate, reference, n_gram=2):
     reference = reference.split()
     return sentence_bleu([reference], candidate)#, weights=(1,0,0,0))
     
-######################################################################
-# This is a helper function to print time elapsed and estimated time
+# Helper function to print time elapsed and estimated time
 # remaining given the current time and progress %.
-
 def asMinutes(s):
     m = math.floor(s / 60)
     s -= m * 60
@@ -86,7 +84,6 @@ def timeSince(since, percent):
     es = s / (percent)
     rs = es - s
     return '{} (- {})'.format(asMinutes(s), asMinutes(rs))
-######################
 
 # Object used in Beam Search to keep track of the results at each depth of the search tree
 class BeamSearchResult:

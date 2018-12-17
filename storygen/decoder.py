@@ -37,9 +37,7 @@ class DecoderRNN(nn.Module):
         self.max_length = max_length
 
         self.embedding = nn.Embedding(self.output_size, self.embedding_size)
-        #self.attn = nn.Linear(self.hidden_size * 2, self.max_length)
         self.attn = nn.Linear(self.hidden_size + self.embedding_size, self.max_length)
-        #self.attn_combine = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.attn_combine = nn.Linear(self.hidden_size + self.embedding_size, self.embedding_size)
         self.dropout = nn.Dropout(self.dropout_p)
         self.gru = nn.GRU(self.embedding_size, self.hidden_size)
